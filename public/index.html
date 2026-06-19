@@ -25,7 +25,7 @@
   .auth-box { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: grid; gap: 16px; }
   .auth-title { color: var(--accent2); font-size: 24px; font-weight: 800; }
   .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border-radius: 8px; padding: 4px; }
-  .tab { min-width: 0; border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab { min-width: 0; border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; font-size: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
   .tab.active { background: var(--accent); color: white; }
   .form { display: grid; gap: 10px; }
   .field { display: grid; gap: 6px; }
@@ -39,7 +39,9 @@
   #auth-status, #status { min-height: 18px; color: var(--danger); font-size: 13px; }
 
   #app { display: flex; height: 100vh; overflow: hidden; }
+  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9; }
   #sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  #close-sidebar { display: none; }
   .sidebar-header { padding: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); gap: 8px; }
   .sidebar-title { color: var(--accent2); font-weight: 800; }
   #new-chat-btn { white-space: nowrap; }
@@ -131,8 +133,10 @@
   .clawhub-import-btn:hover { opacity:0.85; }
 
   @media (max-width: 720px) {
+    #sidebar-overlay.show { display: block; }
     #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,.4); }
     #sidebar.open { transform: translateX(0); }
+    #close-sidebar { display: inline-flex; }
     .bubble { max-width: 96%; }
     #topbar { padding: 0 10px; }
   }
@@ -157,9 +161,11 @@
 </section>
 
 <div id="app" class="hidden">
+  <div id="sidebar-overlay"></div>
   <aside id="sidebar">
     <div class="sidebar-header">
       <span class="sidebar-title">Lite Chat</span>
+      <button class="icon-btn" id="close-sidebar" title="关闭">✕</button>
       <button class="secondary" id="new-chat-btn">新对话</button>
     </div>
     <div id="conversation-list"></div>
@@ -508,7 +514,7 @@ async function switchConversation(id) {
   if (currentConversation.model) refs.model.value = currentConversation.model
   renderSidebar()
   renderMessages(messages)
-  if (window.innerWidth <= 720) refs.sidebar.classList.remove('open')
+  if (window.innerWidth <= 720) closeSidebar()
 }
 
 function renderMessages(items) {
@@ -903,12 +909,20 @@ function setAdminTab(tab) {
   const showSkills = tab === 'skills'
   refs.adminPaneProviders.classList.toggle('hidden', showSkills)
   refs.adminPaneSkills.classList.toggle('hidden', !showSkills)
-  refs.adminTabProviders.classList.remove('secondary')
-  refs.adminTabSkills.classList.remove('secondary')
-  refs.adminTabProviders.classList.add('tab')
-  refs.adminTabSkills.classList.add('tab')
   refs.adminTabProviders.classList.toggle('active', !showSkills)
   refs.adminTabSkills.classList.toggle('active', showSkills)
+}
+
+function toggleSidebar() {
+  const open = refs.sidebar.classList.toggle('open')
+  const ov = document.getElementById('sidebar-overlay')
+  if (ov) ov.classList.toggle('show', open)
+}
+
+function closeSidebar() {
+  refs.sidebar.classList.remove('open')
+  const ov = document.getElementById('sidebar-overlay')
+  if (ov) ov.classList.remove('show')
 }
 
 async function openAdminModal() {
@@ -1008,7 +1022,9 @@ refs.skillBtn.onclick = (event) => {
   refs.skillPicker.classList.toggle('hidden')
 }
 refs.skillPicker.onclick = (event) => event.stopPropagation()
-$('toggle-sidebar').onclick = () => refs.sidebar.classList.toggle('open')
+$('toggle-sidebar').onclick = () => toggleSidebar()
+if ($('close-sidebar')) $('close-sidebar').onclick = () => closeSidebar()
+document.getElementById('sidebar-overlay').onclick = closeSidebar
 $('send-btn').onclick = sendMessage
 refs.input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() }
