@@ -93,7 +93,12 @@ export default async function messageRoutes(app) {
       [conversation.id, request.user.id],
     )
     const upstreamMessages = []
-    if (conversation.system_prompt) upstreamMessages.push({ role: 'system', content: conversation.system_prompt })
+    let systemPrompt = conversation.system_prompt
+    if (body.skillId) {
+      const skill = await one('SELECT system_prompt FROM skills WHERE id = $1 AND is_active = true', [body.skillId])
+      if (skill?.system_prompt) systemPrompt = skill.system_prompt
+    }
+    if (systemPrompt) upstreamMessages.push({ role: 'system', content: systemPrompt })
     for (const row of rows.rows) upstreamMessages.push({ role: row.role, content: row.content })
 
     const headers = { 'Content-Type': 'application/json' }

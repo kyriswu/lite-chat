@@ -32,8 +32,9 @@
   label { color: var(--text2); font-size: 12px; }
   .input, select, textarea { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none; }
   .input:focus, select:focus, textarea:focus { border-color: var(--accent); }
-  .primary { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; }
+  .primary, .btn { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; }
   .secondary { background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+  .secondary.active { background: var(--surface2); color: var(--accent2); border-color: var(--accent); }
   .danger { color: var(--danger); }
   #auth-status, #status { min-height: 18px; color: var(--danger); font-size: 13px; }
 
@@ -97,6 +98,24 @@
   .admin-provider-name { font-weight: 650; }
   .admin-provider-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .admin-provider-actions { display: flex; gap: 6px; }
+  /* Skill 选择器 */
+  .skill-btn { background: none; border: none; cursor: pointer; padding: 0 6px; color: var(--text2); font-size: 18px; line-height: 1; transition: color .15s; flex-shrink: 0; }
+  .skill-btn:hover, .skill-btn.active { color: var(--accent); }
+  .skill-picker { position: absolute; bottom: 100%; left: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 220px; max-height: 280px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 100; }
+  .skill-picker.hidden { display: none; }
+  .skill-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; }
+  .skill-item:hover, .skill-item.active { background: var(--surface3, #2a2a3a); }
+  .skill-item-icon { font-size: 20px; flex-shrink: 0; }
+  .skill-item-text { flex: 1; min-width: 0; }
+  .skill-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .skill-item-desc { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .skill-none { padding: 6px 10px; font-size: 12px; color: var(--text2); text-align: center; }
+  /* 管理员 skill 列表 */
+  .admin-skill-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .admin-skill-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .admin-skill-name { font-weight: 650; }
+  .admin-skill-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-skill-actions { display: flex; gap: 6px; }
 
   @media (max-width: 720px) {
     #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,.4); }
@@ -153,6 +172,10 @@
       <div id="input-wrap">
         <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行，支持粘贴图片"></textarea>
         <div id="input-actions">
+          <div style="position:relative">
+            <div class="skill-picker hidden" id="skill-picker"></div>
+            <button class="skill-btn" id="skill-btn" title="选择技能">⚡</button>
+          </div>
           <button class="icon-btn" id="upload-btn" title="上传图片">🖼</button>
           <input type="file" id="file-input" accept="image/*" multiple hidden />
           <button class="icon-btn danger" id="clear-btn" title="删除对话">🗑</button>
@@ -177,20 +200,42 @@
 
 <div class="modal" id="admin-modal">
   <div class="modal-box wide">
-    <div class="modal-title">全局 Provider</div>
-    <div class="admin-provider-list" id="admin-provider-list"></div>
-    <form class="form" id="admin-provider-form">
-      <input type="hidden" id="admin-provider-id" />
-      <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
-      <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
-      <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
-      <div class="field"><label>默认模型</label><input class="input" id="admin-provider-default-model" /></div>
-      <div class="modal-actions">
-        <button class="secondary" id="admin-provider-reset" type="button">清空</button>
-        <button class="secondary" id="admin-cancel" type="button">关闭</button>
-        <button class="primary" type="submit">保存全局 Provider</button>
-      </div>
-    </form>
+    <div class="modal-title">管理员</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;">
+      <button class="secondary" id="admin-tab-providers" style="flex:1">供应商</button>
+      <button class="secondary" id="admin-tab-skills" style="flex:1">技能</button>
+    </div>
+    <div id="admin-pane-providers">
+      <div class="admin-provider-list" id="admin-provider-list"></div>
+      <form class="form" id="admin-provider-form">
+        <input type="hidden" id="admin-provider-id" />
+        <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
+        <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
+        <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
+        <div class="field"><label>默认模型</label><input class="input" id="admin-provider-default-model" /></div>
+        <div class="modal-actions">
+          <button class="secondary" id="admin-provider-reset" type="button">清空</button>
+          <button class="secondary" id="admin-cancel" type="button">关闭</button>
+          <button class="primary" type="submit">保存全局 Provider</button>
+        </div>
+      </form>
+    </div>
+    <div id="admin-pane-skills" class="hidden">
+      <div class="admin-skill-list" id="admin-skill-list"></div>
+      <form class="form" id="admin-skill-form">
+        <input type="hidden" id="admin-skill-id" />
+        <div class="field"><label>图标 Emoji</label><input class="input" id="admin-skill-icon" value="🤖" maxlength="4" style="width:60px" /></div>
+        <div class="field"><label>名称</label><input class="input" id="admin-skill-name" required /></div>
+        <div class="field"><label>描述（一句话）</label><input class="input" id="admin-skill-desc" /></div>
+        <div class="field"><label>System Prompt</label><textarea class="input" id="admin-skill-prompt" rows="4" required style="resize:vertical"></textarea></div>
+        <div class="field"><label>排序</label><input class="input" id="admin-skill-order" type="number" value="0" /></div>
+        <div class="field"><label><input type="checkbox" id="admin-skill-active" checked /> 启用</label></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+          <button class="secondary" id="admin-skill-reset" type="button">清空</button>
+          <button class="btn" type="submit">保存</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -219,6 +264,9 @@ let pendingImages = []
 let isStreaming = false
 let authMode = 'login'
 let adminProviders = []
+let skills = []
+let adminSkills = []
+let activeSkillId = null
 
 const $ = (id) => document.getElementById(id)
 const refs = {
@@ -229,7 +277,10 @@ const refs = {
   status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
   sysInput: $('sys-prompt-input'),
   adminBtn: $('admin-btn'), adminModal: $('admin-modal'), adminProviderList: $('admin-provider-list'),
-  adminProviderForm: $('admin-provider-form'),
+  adminProviderForm: $('admin-provider-form'), skillBtn: $('skill-btn'), skillPicker: $('skill-picker'),
+  adminSkillList: $('admin-skill-list'), adminSkillForm: $('admin-skill-form'),
+  adminTabProviders: $('admin-tab-providers'), adminTabSkills: $('admin-tab-skills'),
+  adminPaneProviders: $('admin-pane-providers'), adminPaneSkills: $('admin-pane-skills'),
 }
 
 async function api(path, options = {}) {
@@ -288,7 +339,7 @@ async function enterApp() {
   refs.app.classList.remove('hidden')
   refs.userLine.textContent = currentUser?.email || ''
   refs.adminBtn.classList.toggle('hidden', !currentUser?.isAdmin)
-  await Promise.all([loadProviders(), loadConversations(), loadSettings()])
+  await Promise.all([loadProviders(), loadConversations(), loadSettings(), loadSkills()])
   const activeId = LS.get('activeConversationId', null)
   if (activeId && conversations.some((c) => c.id === activeId)) await switchConversation(activeId)
   else if (conversations[0]) await switchConversation(conversations[0].id)
@@ -303,6 +354,60 @@ async function loadProviders() {
   const data = await api('/api/providers')
   providers = data.providers || []
   await loadModels()
+}
+
+async function loadSkills() {
+  try {
+    const data = await api('/api/skills')
+    skills = data.skills || []
+    if (activeSkillId && !skills.some((skill) => skill.id === activeSkillId)) activeSkillId = null
+    renderSkillPicker()
+  } catch {
+    skills = []
+    activeSkillId = null
+    renderSkillPicker()
+  }
+}
+
+function renderSkillPicker() {
+  refs.skillPicker.innerHTML = ''
+  const none = document.createElement('div')
+  none.className = `skill-item${activeSkillId ? '' : ' active'}`
+  none.innerHTML = '<div class="skill-item-icon">∅</div><div class="skill-item-text"><div class="skill-item-name">无技能</div><div class="skill-item-desc">使用当前对话系统提示词</div></div>'
+  none.onclick = () => {
+    activeSkillId = null
+    refs.skillPicker.classList.add('hidden')
+    renderSkillPicker()
+  }
+  refs.skillPicker.appendChild(none)
+
+  if (!skills.length) {
+    const empty = document.createElement('div')
+    empty.className = 'skill-none'
+    empty.textContent = '暂无可用技能'
+    refs.skillPicker.appendChild(empty)
+  }
+
+  for (const skill of skills) {
+    const item = document.createElement('div')
+    item.className = `skill-item${activeSkillId === skill.id ? ' active' : ''}`
+    item.innerHTML = `
+      <div class="skill-item-icon">${escHtml(skill.icon || '🤖')}</div>
+      <div class="skill-item-text">
+        <div class="skill-item-name">${escHtml(skill.name)}</div>
+        <div class="skill-item-desc">${escHtml(skill.description || '')}</div>
+      </div>`
+    item.onclick = () => {
+      activeSkillId = skill.id
+      refs.skillPicker.classList.add('hidden')
+      renderSkillPicker()
+    }
+    refs.skillPicker.appendChild(item)
+  }
+
+  refs.skillBtn.classList.toggle('active', Boolean(activeSkillId))
+  const activeSkill = skills.find((skill) => skill.id === activeSkillId)
+  refs.skillBtn.title = activeSkill ? `当前技能：${activeSkill.name}` : '选择技能'
 }
 
 function getSelectedProvider() {
@@ -462,6 +567,7 @@ async function sendMessage() {
         providerId,
         model: refs.model.value,
         message: { role: 'user', content },
+        skillId: activeSkillId,
         stream: true,
       }),
     })
@@ -583,11 +689,75 @@ async function loadAdminProviders() {
   renderAdminProviders()
 }
 
+function clearAdminSkillForm() {
+  $('admin-skill-id').value = ''
+  $('admin-skill-icon').value = '🤖'
+  $('admin-skill-name').value = ''
+  $('admin-skill-desc').value = ''
+  $('admin-skill-prompt').value = ''
+  $('admin-skill-order').value = '0'
+  $('admin-skill-active').checked = true
+}
+
+function renderAdminSkillList() {
+  refs.adminSkillList.innerHTML = adminSkills.length ? '' : '<div id="empty-state">暂无 Skill</div>'
+  for (const skill of adminSkills) {
+    const row = document.createElement('div')
+    row.className = 'admin-skill-row'
+    row.innerHTML = `
+      <div>
+        <div class="admin-skill-name">${escHtml(skill.icon || '🤖')} ${escHtml(skill.name)}</div>
+        <div class="admin-skill-meta">${skill.is_active ? '已启用' : '已停用'} · 排序 ${escHtml(skill.sort_order ?? 0)}${skill.description ? ' · ' + escHtml(skill.description) : ''}</div>
+      </div>
+      <div class="admin-skill-actions">
+        <button class="secondary" type="button">编辑</button>
+        <button class="secondary danger" type="button">删除</button>
+      </div>`
+    const [editBtn, deleteBtn] = row.querySelectorAll('button')
+    editBtn.onclick = () => {
+      $('admin-skill-id').value = skill.id
+      $('admin-skill-icon').value = skill.icon || '🤖'
+      $('admin-skill-name').value = skill.name || ''
+      $('admin-skill-desc').value = skill.description || ''
+      $('admin-skill-prompt').value = skill.system_prompt || ''
+      $('admin-skill-order').value = skill.sort_order ?? 0
+      $('admin-skill-active').checked = Boolean(skill.is_active)
+    }
+    deleteBtn.onclick = async () => {
+      if (!confirm(`删除 Skill「${skill.name}」？`)) return
+      try {
+        await api(`/api/admin/skills/${skill.id}`, { method: 'DELETE' })
+        await loadAdminSkills()
+        await loadSkills()
+      } catch (err) {
+        alert(err.message)
+      }
+    }
+    refs.adminSkillList.appendChild(row)
+  }
+}
+
+async function loadAdminSkills() {
+  const data = await api('/api/admin/skills')
+  adminSkills = data.skills || []
+  renderAdminSkillList()
+}
+
+function setAdminTab(tab) {
+  const showSkills = tab === 'skills'
+  refs.adminPaneProviders.classList.toggle('hidden', showSkills)
+  refs.adminPaneSkills.classList.toggle('hidden', !showSkills)
+  refs.adminTabProviders.classList.toggle('active', !showSkills)
+  refs.adminTabSkills.classList.toggle('active', showSkills)
+}
+
 async function openAdminModal() {
   if (!currentUser?.isAdmin) return
   clearAdminProviderForm()
+  clearAdminSkillForm()
+  setAdminTab('providers')
   refs.adminModal.classList.add('open')
-  await loadAdminProviders()
+  await Promise.all([loadAdminProviders(), loadAdminSkills()])
 }
 
 refs.adminProviderForm.onsubmit = async (event) => {
@@ -607,6 +777,30 @@ refs.adminProviderForm.onsubmit = async (event) => {
   clearAdminProviderForm()
   await loadAdminProviders()
   await loadProviders()
+}
+
+refs.adminSkillForm.onsubmit = async (event) => {
+  event.preventDefault()
+  const id = $('admin-skill-id').value
+  const body = {
+    icon: $('admin-skill-icon').value.trim() || '🤖',
+    name: $('admin-skill-name').value.trim(),
+    description: $('admin-skill-desc').value.trim(),
+    system_prompt: $('admin-skill-prompt').value.trim(),
+    sort_order: Number.parseInt($('admin-skill-order').value, 10) || 0,
+    is_active: $('admin-skill-active').checked,
+  }
+  try {
+    await api(id ? `/api/admin/skills/${id}` : '/api/admin/skills', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(body),
+    })
+    clearAdminSkillForm()
+    await loadAdminSkills()
+    await loadSkills()
+  } catch (err) {
+    alert(err.message)
+  }
 }
 
 function copyCode(btn) {
@@ -634,6 +828,14 @@ refs.model.onchange = () => LS.set('lastModel', refs.model.value)
 $('admin-btn').onclick = openAdminModal
 $('admin-cancel').onclick = () => refs.adminModal.classList.remove('open')
 $('admin-provider-reset').onclick = clearAdminProviderForm
+refs.adminTabProviders.onclick = () => setAdminTab('providers')
+refs.adminTabSkills.onclick = () => setAdminTab('skills')
+$('admin-skill-reset').onclick = clearAdminSkillForm
+refs.skillBtn.onclick = (event) => {
+  event.stopPropagation()
+  refs.skillPicker.classList.toggle('hidden')
+}
+refs.skillPicker.onclick = (event) => event.stopPropagation()
 $('toggle-sidebar').onclick = () => refs.sidebar.classList.toggle('open')
 $('send-btn').onclick = sendMessage
 refs.input.addEventListener('keydown', (event) => {
@@ -656,6 +858,7 @@ document.addEventListener('paste', async (event) => {
     }
   }
 })
+document.addEventListener('click', () => refs.skillPicker.classList.add('hidden'))
 $('sys-prompt-btn').onclick = () => {
   refs.sysInput.value = currentConversation?.systemPrompt || ''
   refs.sysModal.classList.add('open')

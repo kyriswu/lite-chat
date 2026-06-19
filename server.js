@@ -16,6 +16,7 @@ import conversationRoutes from './routes/conversations.js'
 import messageRoutes from './routes/messages.js'
 import providerRoutes, { adminProviderRoutes } from './routes/providers.js'
 import settingsRoutes from './routes/settings.js'
+import skillRoutes, { adminSkillRoutes } from './routes/skills.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -49,6 +50,8 @@ await app.register(providerRoutes, { prefix: '/api/providers' })
 await app.register(adminProviderRoutes, { prefix: '/api/admin/providers' })
 await app.register(conversationRoutes, { prefix: '/api/conversations' })
 await app.register(messageRoutes, { prefix: '/api' })
+await app.register(skillRoutes, { prefix: '/api/skills' })
+await app.register(adminSkillRoutes, { prefix: '/api/admin/skills' })
 await app.register(settingsRoutes, { prefix: '/api/settings' })
 
 // ── 图片上传 ────────────────────────────────────────────
