@@ -1,0 +1,17 @@
+{
+  "name": "lite-chat",
+  "version": "1.0.0",
+  "description": "Lightweight chat UI with Fastify backend",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "fastify": "^4.28.0",
+    "@fastify/static": "^7.0.4",
+    "@fastify/multipart": "^8.3.0",
+    "@fastify/cors": "^9.0.1"
+  }
+}

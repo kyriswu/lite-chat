@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lite Chat</title>
+<!-- marked.js for Markdown, highlight.js for code -->
+<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0d0d;
+    --surface: #1a1a1a;
+    --surface2: #252525;
+    --border: #333;
+    --accent: #7c6aff;
+    --accent2: #a78bfa;
+    --text: #e5e5e5;
+    --text2: #999;
+    --user-bg: #2a2250;
+    --ai-bg: #1a1a1a;
+    --danger: #ef4444;
+    --sidebar-w: 260px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+  /* ── Layout ── */
+  #app { display: flex; height: 100vh; overflow: hidden; }
+  #sidebar {
+    width: var(--sidebar-w); min-width: var(--sidebar-w);
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+    transition: transform .2s;
+  }
+  #sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-w))); position: absolute; z-index: 50; height: 100%; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  /* ── Sidebar ── */
+  .sidebar-header {
+    padding: 16px 14px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-title { font-size: 15px; font-weight: 700; color: var(--accent2); }
+  #new-chat-btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
+    transition: opacity .15s;
+  }
+  #new-chat-btn:hover { opacity: .85; }
+  #session-list { flex: 1; overflow-y: auto; padding: 8px 6px; }
+  .session-item {
+    padding: 9px 10px; border-radius: 8px; cursor: pointer;
+    font-size: 13px; color: var(--text2); position: relative;
+    display: flex; align-items: center; gap: 6px;
+    transition: background .12s;
+  }
+  .session-item:hover { background: var(--surface2); color: var(--text); }
+  .session-item.active { background: var(--user-bg); color: var(--accent2); }
+  .session-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-del {
+    display: none; background: none; border: none; color: var(--danger);
+    font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .session-item:hover .session-del { display: block; }
+
+  /* Settings panel */
+  #settings-panel {
+    border-top: 1px solid var(--border); padding: 12px 10px;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .settings-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }
+  .settings-input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 7px;
+    padding: 7px 10px; color: var(--text); font-size: 13px; width: 100%;
+    outline: none; transition: border-color .15s;
+  }
+  .settings-input:focus { border-color: var(--accent); }
+  #model-select { appearance: none; cursor: pointer; }
+
+  /* ── Topbar ── */
+  #topbar {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 16px; height: 52px; display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  #toggle-sidebar {
+    background: none; border: none; color: var(--text2); font-size: 20px;
+    cursor: pointer; padding: 4px 6px; border-radius: 6px;
+    transition: background .12s;
+  }
+  #toggle-sidebar:hover { background: var(--surface2); color: var(--text); }
+  #chat-title { font-size: 15px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #sys-prompt-btn {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer;
+    transition: all .12s;
+  }
+  #sys-prompt-btn:hover { border-color: var(--accent); color: var(--accent2); }
+
+  /* ── Messages ── */
+  #messages {
+    flex: 1; overflow-y: auto; padding: 24px 0;
+    scroll-behavior: smooth;
+  }
+  .msg-row {
+    max-width: 780px; margin: 0 auto 4px; padding: 2px 20px;
+    display: flex; flex-direction: column;
+  }
+  .msg-row.user { align-items: flex-end; }
+  .msg-row.assistant { align-items: flex-start; }
+  .msg-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; padding: 0 4px; }
+  .bubble {
+    padding: 12px 16px; border-radius: 16px; max-width: 90%;
+    line-height: 1.65; font-size: 14.5px;
+    word-break: break-word;
+  }
+  .msg-row.user .bubble {
+    background: var(--user-bg); border-bottom-right-radius: 4px;
+  }
+  .msg-row.assistant .bubble {
+    background: var(--ai-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px;
+  }
+  /* images in bubble */
+  .bubble img { max-width: 100%; max-height: 320px; border-radius: 10px; margin: 6px 0; display: block; }
+  /* Markdown */
+  .bubble p { margin: 0 0 .6em; }
+  .bubble p:last-child { margin-bottom: 0; }
+  .bubble h1,.bubble h2,.bubble h3 { margin: .8em 0 .4em; font-weight: 700; }
+  .bubble h1 { font-size: 1.3em; } .bubble h2 { font-size: 1.15em; } .bubble h3 { font-size: 1em; }
+  .bubble ul,.bubble ol { padding-left: 1.4em; margin: .4em 0; }
+  .bubble li { margin: .2em 0; }
+  .bubble code:not(pre code) {
+    background: #2d2d2d; border-radius: 4px; padding: 2px 5px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: .88em; color: #e2b96b;
+  }
+  .bubble pre {
+    background: #161616; border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; overflow-x: auto; margin: .6em 0; position: relative;
+  }
+  .bubble pre code { font-size: .85em; background: none; color: inherit; padding: 0; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text2); font-size: 11px; padding: 3px 8px; border-radius: 5px; cursor: pointer;
+    transition: all .12s;
+  }
+  .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .bubble blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text2); margin: .5em 0; }
+  .bubble table { border-collapse: collapse; width: 100%; margin: .5em 0; }
+  .bubble th,.bubble td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
+  .bubble th { background: var(--surface2); }
+  .bubble hr { border: none; border-top: 1px solid var(--border); margin: .8em 0; }
+  .thinking { color: var(--text2); font-style: italic; font-size: 13px; }
+  .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent2); animation: blink .8s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Image Preview strip ── */
+  #image-previews {
+    display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 0;
+    max-width: 780px; margin: 0 auto;
+  }
+  .img-preview-wrap {
+    position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--border); flex-shrink: 0;
+  }
+  .img-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
+  .img-preview-wrap .remove-img {
+    position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.75);
+    border: none; color: #fff; font-size: 13px; border-radius: 50%;
+    width: 20px; height: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ── Input bar ── */
+  #input-bar {
+    border-top: 1px solid var(--border);
+    padding: 12px 16px 16px;
+    background: var(--bg);
+    flex-shrink: 0;
+  }
+  #input-wrap {
+    max-width: 780px; margin: 0 auto;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; display: flex; flex-direction: column;
+    transition: border-color .15s;
+  }
+  #input-wrap:focus-within { border-color: var(--accent); }
+  #msg-input {
+    background: none; border: none; outline: none; resize: none;
+    padding: 14px 16px 6px; color: var(--text); font-size: 14.5px;
+    font-family: inherit; line-height: 1.6; min-height: 56px; max-height: 200px;
+    overflow-y: auto; width: 100%;
+  }
+  #msg-input::placeholder { color: var(--text2); }
+  #input-actions {
+    display: flex; align-items: center; padding: 6px 10px 10px;
+    gap: 6px;
+  }
+  .action-btn {
+    background: none; border: none; color: var(--text2); font-size: 19px; cursor: pointer;
+    padding: 5px 7px; border-radius: 8px; transition: all .12s; line-height: 1;
+  }
+  .action-btn:hover { background: var(--surface2); color: var(--text); }
+  #send-btn {
+    margin-left: auto; background: var(--accent); border: none; color: #fff;
+    width: 36px; height: 36px; border-radius: 10px; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: opacity .15s; flex-shrink: 0;
+  }
+  #send-btn:disabled { opacity: .4; cursor: not-allowed; }
+  #send-btn:not(:disabled):hover { opacity: .85; }
+
+  /* hint */
+  .input-hint { font-size: 11px; color: var(--text2); text-align: center; margin-top: 6px; }
+
+  /* ── System prompt modal ── */
+  #sys-modal {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
+    align-items: center; justify-content: center; z-index: 200;
+  }
+  #sys-modal.open { display: flex; }
+  .modal-box {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 24px; width: 480px; max-width: 95vw; display: flex; flex-direction: column; gap: 12px;
+  }
+  .modal-title { font-size: 16px; font-weight: 700; }
+  #sys-prompt-input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; color: var(--text); font-size: 13.5px; resize: vertical;
+    min-height: 120px; outline: none; font-family: inherit;
+  }
+  #sys-prompt-input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .btn-cancel {
+    background: none; border: 1px solid var(--border); color: var(--text2);
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .btn-save {
+    background: var(--accent); border: none; color: #fff;
+    padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
+
+  /* ── Empty state ── */
+  #empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; color: var(--text2); user-select: none;
+  }
+  #empty-state .icon { font-size: 52px; }
+  #empty-state .desc { font-size: 15px; }
+
+  /* ── Sidebar Overlay (mobile) ── */
+  #sidebar-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    z-index: 40;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #sidebar-overlay.show { display: block; }
+
+  /* ── Mobile ── */
+  @media (max-width: 640px) {
+    /* use dynamic viewport height so keyboard doesn't break layout */
+    #app { height: 100dvh; }
+
+    /* sidebar slides in from left as overlay */
+    #sidebar {
+      position: fixed;
+      top: 0; left: 0;
+      height: 100%;
+      z-index: 50;
+      transform: translateX(calc(-1 * var(--sidebar-w)));
+      box-shadow: 4px 0 24px rgba(0,0,0,.4);
+    }
+    #sidebar.open { transform: translateX(0); }
+
+    /* hide the collapsed toggle behaviour on mobile — we use .open instead */
+    #sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-w))); }
+
+    .msg-row { padding: 2px 10px; }
+    .bubble { max-width: 96%; font-size: 14px; }
+
+    /* bigger touch targets in topbar */
+    #topbar { padding: 0 10px; height: 48px; }
+    #toggle-sidebar { font-size: 22px; padding: 6px 8px; }
+    #sys-prompt-btn { font-size: 11px; padding: 4px 8px; }
+
+    /* input bar: shrink padding, avoid zoom on focus */
+    #msg-input { font-size: 16px; } /* 16px prevents iOS zoom */
+    #input-bar { padding: 8px 10px 12px; }
+
+    /* settings panel items bigger for touch */
+    .settings-input { padding: 10px 10px; font-size: 14px; }
+    #new-chat-btn { padding: 8px 14px; font-size: 14px; }
+
+    /* action buttons */
+    .action-btn { font-size: 22px; padding: 6px 8px; }
+    #send-btn { width: 40px; height: 40px; font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- Sidebar overlay (mobile) -->
+  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">💬 Lite Chat</span>
+      <button id="new-chat-btn">＋ 新对话</button>
+    </div>
+    <div id="session-list"></div>
+
+    <!-- Settings -->
+    <div id="settings-panel">
+      <div class="settings-label">Base URL</div>
+      <input class="settings-input" id="base-url" type="text" placeholder="http://localhost:11434" />
+      <div class="settings-label">API Key（可留空）</div>
+      <input class="settings-input" id="api-key" type="password" placeholder="sk-..." />
+      <div class="settings-label">模型</div>
+      <select class="settings-input" id="model-select">
+        <option value="">── 点击刷新 ──</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Topbar -->
+    <div id="topbar">
+      <button id="toggle-sidebar" title="折叠侧栏">☰</button>
+      <span id="chat-title">新对话</span>
+      <button id="sys-prompt-btn">⚙ 系统提示</button>
+    </div>
+
+    <!-- Messages / Empty state -->
+    <div id="messages">
+      <div id="empty-state">
+        <div class="icon">🤖</div>
+        <div class="desc">选择模型，开始对话</div>
+      </div>
+    </div>
+
+    <!-- Image previews -->
+    <div id="image-previews"></div>
+
+    <!-- Input bar -->
+    <div id="input-bar">
+      <div id="input-wrap">
+        <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行，支持直接粘贴图片…"></textarea>
+        <div id="input-actions">
+          <button class="action-btn" id="upload-btn" title="上传图片">🖼</button>
+          <input type="file" id="file-input" accept="image/*" multiple style="display:none" />
+          <button class="action-btn" id="clear-btn" title="清空对话">🗑</button>
+          <button id="send-btn" title="发送 (Enter)">↑</button>
+        </div>
+      </div>
+      <div class="input-hint">Enter 发送 · Shift+Enter 换行 · 可直接粘贴图片</div>
+    </div>
+  </div>
+</div>
+
+<!-- System prompt modal -->
+<div id="sys-modal">
+  <div class="modal-box">
+    <div class="modal-title">⚙ 系统提示词 (System Prompt)</div>
+    <textarea id="sys-prompt-input" placeholder="你是一个有用的助手…（留空则不设置）"></textarea>
+    <div class="modal-actions">
+      <button class="btn-cancel" id="modal-cancel">取消</button>
+      <button class="btn-save" id="modal-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Storage helpers ────────────────────────────────────────
+const LS = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d } catch { return d } },
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+}
+
+// ── Marked config ─────────────────────────────────────────
+marked.setOptions({ breaks: true, gfm: true })
+const renderer = new marked.Renderer()
+renderer.code = ({ text, lang }) => {
+  const highlighted = (lang && hljs.getLanguage(lang))
+    ? hljs.highlight(text, { language: lang }).value
+    : hljs.highlightAuto(text).value
+  return `<pre><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="hljs language-${lang||''}">${highlighted}</code></pre>`
+}
+marked.use({ renderer })
+
+function copyCode(btn) {
+  const code = btn.nextElementSibling.innerText
+  navigator.clipboard.writeText(code).then(() => { btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1500) })
+}
+
+// ── State ─────────────────────────────────────────────────
+let sessions   = LS.get('sessions', {})   // { id: { title, messages, sysPrompt } }
+let sessionIds = LS.get('sessionIds', []) // ordered list
+let curId      = LS.get('curId', null)
+let pendingImages = []  // [{url, dataUrl}] for current input
+let isStreaming = false
+
+// ── DOM refs ──────────────────────────────────────────────
+const $msgs    = document.getElementById('messages')
+const $empty   = document.getElementById('empty-state')
+const $input   = document.getElementById('msg-input')
+const $send    = document.getElementById('send-btn')
+const $previews = document.getElementById('image-previews')
+const $title   = document.getElementById('chat-title')
+const $list    = document.getElementById('session-list')
+const $baseUrl = document.getElementById('base-url')
+const $apiKey  = document.getElementById('api-key')
+const $model   = document.getElementById('model-select')
+
+// ── Session CRUD ──────────────────────────────────────────
+function newSession() {
+  const id = 'sess_' + Date.now()
+  sessions[id] = { title: '新对话', messages: [], sysPrompt: LS.get('globalSysPrompt', '') }
+  sessionIds.unshift(id)
+  save()
+  switchSession(id)
+}
+function deleteSession(id) {
+  delete sessions[id]
+  sessionIds = sessionIds.filter(x => x !== id)
+  save()
+  if (curId === id) curId = sessionIds[0] || null
+  renderSidebar()
+  if (curId) switchSession(curId)
+  else { renderMessages([]); $title.textContent = '新对话' }
+}
+function switchSession(id) {
+  curId = id
+  LS.set('curId', id)
+  renderSidebar()
+  renderMessages(sessions[id]?.messages || [])
+  $title.textContent = sessions[id]?.title || '新对话'
+  pendingImages = []
+  renderImagePreviews()
+}
+function save() {
+  LS.set('sessions', sessions)
+  LS.set('sessionIds', sessionIds)
+  LS.set('curId', curId)
+}
+
+// ── Render sidebar ────────────────────────────────────────
+function renderSidebar() {
+  $list.innerHTML = ''
+  for (const id of sessionIds) {
+    const s = sessions[id]
+    const el = document.createElement('div')
+    el.className = 'session-item' + (id === curId ? ' active' : '')
+    el.innerHTML = `<span class="title">${escHtml(s.title)}</span><button class="session-del" title="删除">✕</button>`
+    el.querySelector('.title').onclick = () => { switchSession(id); if (isMobile()) closeSidebar() }
+    el.querySelector('.session-del').onclick = (e) => { e.stopPropagation(); if(confirm('删除该对话？')) deleteSession(id) }
+    $list.appendChild(el)
+  }
+}
+
+// ── Render messages ───────────────────────────────────────
+function renderMessages(messages) {
+  $msgs.innerHTML = ''
+  if (!messages.length) { $msgs.appendChild($empty); return }
+  for (const m of messages) appendMessage(m, false)
+  scrollToBottom()
+}
+
+function appendMessage(msg, scroll = true) {
+  if ($msgs.contains($empty)) $empty.remove()
+
+  const row = document.createElement('div')
+  row.className = 'msg-row ' + msg.role
+  const label = document.createElement('div')
+  label.className = 'msg-label'
+  label.textContent = msg.role === 'user' ? '你' : '助手'
+  const bubble = document.createElement('div')
+  bubble.className = 'bubble'
+
+  if (msg.role === 'user') {
+    // user: may contain images
+    let html = ''
+    if (Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        if (part.type === 'text') html += `<p>${escHtml(part.text)}</p>`
+        else if (part.type === 'image_url') html += `<img src="${part.image_url.url}" />`
+      }
+    } else {
+      html = `<p>${escHtml(msg.content)}</p>`
+    }
+    bubble.innerHTML = html
+  } else {
+    // assistant: markdown
+    bubble.innerHTML = marked.parse(msg.content || '')
+  }
+
+  row.appendChild(label)
+  row.appendChild(bubble)
+  row.dataset.msgIndex = (sessions[curId]?.messages.length - 1) || 0
+  $msgs.appendChild(row)
+  if (scroll) scrollToBottom()
+  return bubble
+}
+
+function scrollToBottom() {
+  $msgs.scrollTo({ top: $msgs.scrollHeight, behavior: 'smooth' })
+}
+
+// ── Image handling ────────────────────────────────────────
+function renderImagePreviews() {
+  $previews.innerHTML = ''
+  for (let i = 0; i < pendingImages.length; i++) {
+    const img = pendingImages[i]
+    const wrap = document.createElement('div')
+    wrap.className = 'img-preview-wrap'
+    wrap.innerHTML = `<img src="${img.dataUrl}" /><button class="remove-img" data-i="${i}">✕</button>`
+    wrap.querySelector('.remove-img').onclick = () => { pendingImages.splice(i, 1); renderImagePreviews() }
+    $previews.appendChild(wrap)
+  }
+}
+
+async function uploadImage(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  try {
+    const res = await fetch('/api/upload', { method: 'POST', body: fd })
+    const json = await res.json()
+    return json.url  // /uploads/xxx.jpg
+  } catch {
+    return null
+  }
+}
+
+async function addImageFile(file) {
+  const dataUrl = await readAsDataURL(file)
+  const serverUrl = await uploadImage(file)
+  pendingImages.push({ dataUrl, serverUrl: serverUrl || dataUrl })
+  renderImagePreviews()
+}
+
+function readAsDataURL(file) {
+  return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(file) })
+}
+
+// Paste handler
+document.addEventListener('paste', async (e) => {
+  const items = Array.from(e.clipboardData?.items || [])
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) { e.preventDefault(); await addImageFile(file) }
+    }
+  }
+})
+
+// File input
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  for (const f of e.target.files) await addImageFile(f)
+  e.target.value = ''
+})
+document.getElementById('upload-btn').onclick = () => document.getElementById('file-input').click()
+
+// ── Send message ──────────────────────────────────────────
+async function sendMessage() {
+  if (isStreaming) return
+  const text = $input.value.trim()
+  if (!text && !pendingImages.length) return
+
+  // ensure session exists
+  if (!curId) newSession()
+
+  const model = $model.value
+  if (!model) { alert('请先选择模型！'); return }
+
+  // build user content
+  let userContent
+  if (pendingImages.length) {
+    userContent = []
+    if (text) userContent.push({ type: 'text', text })
+    for (const img of pendingImages) userContent.push({ type: 'image_url', image_url: { url: img.serverUrl } })
+  } else {
+    userContent = text
+  }
+
+  const userMsg = { role: 'user', content: userContent }
+  sessions[curId].messages.push(userMsg)
+
+  // auto-title from first message
+  if (sessions[curId].messages.length === 1) {
+    sessions[curId].title = (text || '图片消息').slice(0, 28)
+    $title.textContent = sessions[curId].title
+  }
+
+  appendMessage(userMsg)
+
+  $input.value = ''
+  $input.style.height = ''
+  pendingImages = []
+  renderImagePreviews()
+  save()
+
+  // assistant placeholder
+  const assistantMsg = { role: 'assistant', content: '' }
+  sessions[curId].messages.push(assistantMsg)
+  const bubble = appendMessage(assistantMsg)
+  bubble.innerHTML = '<span class="thinking">思考中</span><span class="cursor"></span>'
+
+  isStreaming = true
+  $send.disabled = true
+
+  // build messages array
+  const sysPrompt = sessions[curId].sysPrompt || ''
+  const apiMessages = []
+  if (sysPrompt) apiMessages.push({ role: 'system', content: sysPrompt })
+  apiMessages.push(...sessions[curId].messages.slice(0, -1)) // all except empty assistant
+
+  const baseUrl = $baseUrl.value.trim() || 'http://localhost:11434'
+  const apiKey = $apiKey.value.trim()
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-base-url': baseUrl,
+        ...(apiKey ? { 'x-api-key': apiKey } : {}),
+      },
+      body: JSON.stringify({ model, messages: apiMessages, stream: true }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json()
+      throw new Error(err.error || `HTTP ${res.status}`)
+    }
+
+    const reader = res.body.getReader()
+    const dec = new TextDecoder()
+    let accum = ''
+    let rawContent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      accum += dec.decode(value, { stream: true })
+      const lines = accum.split('\n')
+      accum = lines.pop()
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const payload = line.slice(6).trim()
+        if (payload === '[DONE]') continue
+        try {
+          const chunk = JSON.parse(payload)
+          const delta = chunk.choices?.[0]?.delta?.content || ''
+          rawContent += delta
+          bubble.innerHTML = marked.parse(rawContent) + '<span class="cursor"></span>'
+          scrollToBottom()
+        } catch {}
+      }
+    }
+
+    // finalize
+    bubble.innerHTML = marked.parse(rawContent)
+    assistantMsg.content = rawContent
+    save()
+
+  } catch (err) {
+    bubble.innerHTML = `<span style="color:var(--danger)">❌ ${escHtml(err.message)}</span>`
+    sessions[curId].messages.pop()
+    save()
+  } finally {
+    isStreaming = false
+    $send.disabled = false
+  }
+}
+
+// ── Settings persistence ──────────────────────────────────
+$baseUrl.value = LS.get('baseUrl', '')
+$apiKey.value  = LS.get('apiKey', '')
+$baseUrl.addEventListener('input', () => { LS.set('baseUrl', $baseUrl.value); loadModels() })
+$apiKey.addEventListener('input',  () => { LS.set('apiKey',  $apiKey.value);  loadModels() })
+$model.addEventListener('focus', loadModels)
+$model.addEventListener('change', () => LS.set('lastModel', $model.value))
+
+async function loadModels() {
+  const baseUrl = $baseUrl.value.trim() || 'http://localhost:11434'
+  const apiKey  = $apiKey.value.trim()
+  try {
+    const res = await fetch('/api/models', {
+      headers: { 'x-base-url': baseUrl, ...(apiKey ? { 'x-api-key': apiKey } : {}) }
+    })
+    const { models } = await res.json()
+    if (!models?.length) return
+    const lastModel = LS.get('lastModel', '')
+    $model.innerHTML = models.map(m => `<option value="${m}"${m===lastModel?' selected':''}>${m}</option>`).join('')
+  } catch {}
+}
+
+// ── System prompt ─────────────────────────────────────────
+const $sysModal   = document.getElementById('sys-modal')
+const $sysInput   = document.getElementById('sys-prompt-input')
+document.getElementById('sys-prompt-btn').onclick = () => {
+  $sysInput.value = (curId && sessions[curId]?.sysPrompt) || LS.get('globalSysPrompt', '')
+  $sysModal.classList.add('open')
+}
+document.getElementById('modal-cancel').onclick = () => $sysModal.classList.remove('open')
+document.getElementById('modal-save').onclick = () => {
+  const val = $sysInput.value.trim()
+  LS.set('globalSysPrompt', val)
+  if (curId) sessions[curId].sysPrompt = val
+  save()
+  $sysModal.classList.remove('open')
+}
+$sysModal.addEventListener('click', e => { if (e.target === $sysModal) $sysModal.classList.remove('open') })
+
+// ── Clear chat ────────────────────────────────────────────
+document.getElementById('clear-btn').onclick = () => {
+  if (!curId) return
+  if (!confirm('清空当前对话？')) return
+  sessions[curId].messages = []
+  sessions[curId].title = '新对话'
+  $title.textContent = '新对话'
+  save()
+  renderMessages([])
+}
+
+// ── Sidebar toggle ────────────────────────────────────────
+const $sidebar = document.getElementById('sidebar')
+const $overlay = document.getElementById('sidebar-overlay')
+
+function isMobile() { return window.innerWidth <= 640 }
+
+function openSidebar() {
+  $sidebar.classList.add('open')
+  $sidebar.classList.remove('collapsed')
+  if (isMobile()) $overlay.classList.add('show')
+}
+
+function closeSidebar() {
+  if (isMobile()) {
+    $sidebar.classList.remove('open')
+    $overlay.classList.remove('show')
+  } else {
+    $sidebar.classList.toggle('collapsed')
+  }
+}
+
+document.getElementById('toggle-sidebar').onclick = () => {
+  if (isMobile()) {
+    if ($sidebar.classList.contains('open')) closeSidebar()
+    else openSidebar()
+  } else {
+    $sidebar.classList.toggle('collapsed')
+  }
+}
+document.getElementById('new-chat-btn').onclick = newSession
+
+// ── Input events ──────────────────────────────────────────
+$input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
+})
+$input.addEventListener('input', () => {
+  $input.style.height = 'auto'
+  $input.style.height = Math.min($input.scrollHeight, 200) + 'px'
+})
+$send.onclick = sendMessage
+
+// ── Util ──────────────────────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+
+// ── Init ─────────────────────────────────────────────────
+;(function init() {
+  if (!sessionIds.length) newSession()
+  else {
+    renderSidebar()
+    const id = curId && sessions[curId] ? curId : sessionIds[0]
+    switchSession(id)
+  }
+  loadModels()
+})()
+</script>
+</body>
+</html>
