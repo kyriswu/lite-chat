@@ -4,792 +4,651 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Lite Chat</title>
-<!-- marked.js for Markdown, highlight.js for code -->
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
 <style>
   :root {
-    --bg: #0d0d0d;
-    --surface: #1a1a1a;
-    --surface2: #252525;
-    --border: #333;
-    --accent: #7c6aff;
-    --accent2: #a78bfa;
-    --text: #e5e5e5;
-    --text2: #999;
-    --user-bg: #2a2250;
-    --ai-bg: #1a1a1a;
-    --danger: #ef4444;
-    --sidebar-w: 260px;
+    --bg: #0d0d0d; --surface: #1a1a1a; --surface2: #252525; --border: #333;
+    --accent: #7c6aff; --accent2: #a78bfa; --text: #e5e5e5; --text2: #999;
+    --user-bg: #2a2250; --ai-bg: #171717; --danger: #ef4444; --ok: #22c55e;
+    --sidebar-w: 280px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; font-family: -apple-system, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+  html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  button, input, textarea, select { font: inherit; }
+  button { cursor: pointer; }
+  .hidden { display: none !important; }
 
-  /* ── Layout ── */
+  #auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .auth-box { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: grid; gap: 16px; }
+  .auth-title { color: var(--accent2); font-size: 24px; font-weight: 800; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border-radius: 8px; padding: 4px; }
+  .tab { border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; }
+  .tab.active { background: var(--accent); color: white; }
+  .form { display: grid; gap: 10px; }
+  .field { display: grid; gap: 6px; }
+  label { color: var(--text2); font-size: 12px; }
+  .input, select, textarea { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none; }
+  .input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  .primary { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; }
+  .secondary { background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
+  .danger { color: var(--danger); }
+  #auth-status, #status { min-height: 18px; color: var(--danger); font-size: 13px; }
+
   #app { display: flex; height: 100vh; overflow: hidden; }
-  #sidebar {
-    width: var(--sidebar-w); min-width: var(--sidebar-w);
-    background: var(--surface); border-right: 1px solid var(--border);
-    display: flex; flex-direction: column; overflow: hidden;
-    transition: transform .2s;
-  }
-  #sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-w))); position: absolute; z-index: 50; height: 100%; }
-  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  .sidebar-header { padding: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); gap: 8px; }
+  .sidebar-title { color: var(--accent2); font-weight: 800; }
+  #new-chat-btn { white-space: nowrap; }
+  #conversation-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .conversation { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; color: var(--text2); }
+  .conversation:hover { background: var(--surface2); color: var(--text); }
+  .conversation.active { background: var(--user-bg); color: var(--accent2); }
+  .conversation-title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .icon-btn { background: transparent; color: var(--text2); border: 0; border-radius: 6px; padding: 5px 7px; }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  #settings-panel { border-top: 1px solid var(--border); padding: 12px; display: grid; gap: 9px; }
+  .settings-row { display: flex; gap: 8px; }
+  .settings-row select { min-width: 0; flex: 1; }
+  #user-line { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* ── Sidebar ── */
-  .sidebar-header {
-    padding: 16px 14px 12px;
-    display: flex; align-items: center; justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-title { font-size: 15px; font-weight: 700; color: var(--accent2); }
-  #new-chat-btn {
-    background: var(--accent); color: #fff; border: none;
-    padding: 6px 12px; border-radius: 8px; font-size: 13px; cursor: pointer;
-    transition: opacity .15s;
-  }
-  #new-chat-btn:hover { opacity: .85; }
-  #session-list { flex: 1; overflow-y: auto; padding: 8px 6px; }
-  .session-item {
-    padding: 9px 10px; border-radius: 8px; cursor: pointer;
-    font-size: 13px; color: var(--text2); position: relative;
-    display: flex; align-items: center; gap: 6px;
-    transition: background .12s;
-  }
-  .session-item:hover { background: var(--surface2); color: var(--text); }
-  .session-item.active { background: var(--user-bg); color: var(--accent2); }
-  .session-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .session-del {
-    display: none; background: none; border: none; color: var(--danger);
-    font-size: 14px; cursor: pointer; padding: 2px 4px; border-radius: 4px;
-    flex-shrink: 0;
-  }
-  .session-item:hover .session-del { display: block; }
-
-  /* Settings panel */
-  #settings-panel {
-    border-top: 1px solid var(--border); padding: 12px 10px;
-    display: flex; flex-direction: column; gap: 8px;
-  }
-  .settings-label { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; }
-  .settings-input {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 7px;
-    padding: 7px 10px; color: var(--text); font-size: 13px; width: 100%;
-    outline: none; transition: border-color .15s;
-  }
-  .settings-input:focus { border-color: var(--accent); }
-  #model-select { appearance: none; cursor: pointer; }
-
-  /* ── Topbar ── */
-  #topbar {
-    background: var(--surface); border-bottom: 1px solid var(--border);
-    padding: 0 16px; height: 52px; display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0;
-  }
-  #toggle-sidebar {
-    background: none; border: none; color: var(--text2); font-size: 20px;
-    cursor: pointer; padding: 4px 6px; border-radius: 6px;
-    transition: background .12s;
-  }
-  #toggle-sidebar:hover { background: var(--surface2); color: var(--text); }
-  #chat-title { font-size: 15px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  #sys-prompt-btn {
-    background: none; border: 1px solid var(--border); color: var(--text2);
-    font-size: 12px; padding: 5px 10px; border-radius: 7px; cursor: pointer;
-    transition: all .12s;
-  }
-  #sys-prompt-btn:hover { border-color: var(--accent); color: var(--accent2); }
-
-  /* ── Messages ── */
-  #messages {
-    flex: 1; overflow-y: auto; padding: 24px 0;
-    scroll-behavior: smooth;
-  }
-  .msg-row {
-    max-width: 780px; margin: 0 auto 4px; padding: 2px 20px;
-    display: flex; flex-direction: column;
-  }
+  #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #topbar { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  #chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+  #messages { flex: 1; overflow-y: auto; padding: 24px 0; }
+  #empty-state { height: 100%; display: grid; place-items: center; color: var(--text2); }
+  .msg-row { max-width: 820px; margin: 0 auto 8px; padding: 0 20px; display: flex; flex-direction: column; }
   .msg-row.user { align-items: flex-end; }
   .msg-row.assistant { align-items: flex-start; }
-  .msg-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; padding: 0 4px; }
-  .bubble {
-    padding: 12px 16px; border-radius: 16px; max-width: 90%;
-    line-height: 1.65; font-size: 14.5px;
-    word-break: break-word;
-  }
-  .msg-row.user .bubble {
-    background: var(--user-bg); border-bottom-right-radius: 4px;
-  }
-  .msg-row.assistant .bubble {
-    background: var(--ai-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px;
-  }
-  /* images in bubble */
-  .bubble img { max-width: 100%; max-height: 320px; border-radius: 10px; margin: 6px 0; display: block; }
-  /* Markdown */
+  .msg-label { font-size: 11px; color: var(--text2); margin: 0 4px 4px; }
+  .bubble { max-width: 90%; padding: 12px 16px; border-radius: 16px; line-height: 1.65; font-size: 14.5px; word-break: break-word; }
+  .user .bubble { background: var(--user-bg); border-bottom-right-radius: 4px; }
+  .assistant .bubble { background: var(--ai-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+  .bubble img { max-width: 100%; max-height: 320px; display: block; border-radius: 10px; margin: 6px 0; }
   .bubble p { margin: 0 0 .6em; }
   .bubble p:last-child { margin-bottom: 0; }
-  .bubble h1,.bubble h2,.bubble h3 { margin: .8em 0 .4em; font-weight: 700; }
-  .bubble h1 { font-size: 1.3em; } .bubble h2 { font-size: 1.15em; } .bubble h3 { font-size: 1em; }
-  .bubble ul,.bubble ol { padding-left: 1.4em; margin: .4em 0; }
-  .bubble li { margin: .2em 0; }
-  .bubble code:not(pre code) {
-    background: #2d2d2d; border-radius: 4px; padding: 2px 5px;
-    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: .88em; color: #e2b96b;
-  }
-  .bubble pre {
-    background: #161616; border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px; overflow-x: auto; margin: .6em 0; position: relative;
-  }
-  .bubble pre code { font-size: .85em; background: none; color: inherit; padding: 0; }
-  .copy-btn {
-    position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border);
-    color: var(--text2); font-size: 11px; padding: 3px 8px; border-radius: 5px; cursor: pointer;
-    transition: all .12s;
-  }
-  .copy-btn:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .bubble blockquote { border-left: 3px solid var(--accent); padding-left: 12px; color: var(--text2); margin: .5em 0; }
-  .bubble table { border-collapse: collapse; width: 100%; margin: .5em 0; }
-  .bubble th,.bubble td { border: 1px solid var(--border); padding: 6px 10px; font-size: 13px; }
-  .bubble th { background: var(--surface2); }
-  .bubble hr { border: none; border-top: 1px solid var(--border); margin: .8em 0; }
-  .thinking { color: var(--text2); font-style: italic; font-size: 13px; }
+  .bubble pre { background: #161616; border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow-x: auto; margin: .6em 0; position: relative; }
+  .bubble code:not(pre code) { background: #2d2d2d; border-radius: 4px; padding: 2px 5px; color: #e2b96b; }
+  .copy-btn { position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 3px 8px; border-radius: 5px; }
   .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent2); animation: blink .8s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
   @keyframes blink { 50% { opacity: 0; } }
 
-  /* ── Image Preview strip ── */
-  #image-previews {
-    display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 0;
-    max-width: 780px; margin: 0 auto;
-  }
-  .img-preview-wrap {
-    position: relative; width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
-    border: 1px solid var(--border); flex-shrink: 0;
-  }
+  #image-previews { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 0; max-width: 820px; margin: 0 auto; width: 100%; }
+  .img-preview-wrap { position: relative; width: 72px; height: 72px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .img-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
-  .img-preview-wrap .remove-img {
-    position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,.75);
-    border: none; color: #fff; font-size: 13px; border-radius: 50%;
-    width: 20px; height: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;
-  }
+  .remove-img { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.75); color: white; }
 
-  /* ── Input bar ── */
-  #input-bar {
-    border-top: 1px solid var(--border);
-    padding: 12px 16px 16px;
-    background: var(--bg);
-    flex-shrink: 0;
-  }
-  #input-wrap {
-    max-width: 780px; margin: 0 auto;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; display: flex; flex-direction: column;
-    transition: border-color .15s;
-  }
-  #input-wrap:focus-within { border-color: var(--accent); }
-  #msg-input {
-    background: none; border: none; outline: none; resize: none;
-    padding: 14px 16px 6px; color: var(--text); font-size: 14.5px;
-    font-family: inherit; line-height: 1.6; min-height: 56px; max-height: 200px;
-    overflow-y: auto; width: 100%;
-  }
-  #msg-input::placeholder { color: var(--text2); }
-  #input-actions {
-    display: flex; align-items: center; padding: 6px 10px 10px;
-    gap: 6px;
-  }
-  .action-btn {
-    background: none; border: none; color: var(--text2); font-size: 19px; cursor: pointer;
-    padding: 5px 7px; border-radius: 8px; transition: all .12s; line-height: 1;
-  }
-  .action-btn:hover { background: var(--surface2); color: var(--text); }
-  #send-btn {
-    margin-left: auto; background: var(--accent); border: none; color: #fff;
-    width: 36px; height: 36px; border-radius: 10px; font-size: 18px;
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    transition: opacity .15s; flex-shrink: 0;
-  }
-  #send-btn:disabled { opacity: .4; cursor: not-allowed; }
-  #send-btn:not(:disabled):hover { opacity: .85; }
+  #input-bar { border-top: 1px solid var(--border); padding: 12px 16px 16px; }
+  #input-wrap { max-width: 820px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; }
+  #msg-input { background: transparent; border: 0; color: var(--text); resize: none; padding: 14px 16px 6px; min-height: 56px; max-height: 200px; outline: none; }
+  #input-actions { display: flex; align-items: center; gap: 6px; padding: 6px 10px 10px; }
+  #send-btn { margin-left: auto; width: 36px; height: 36px; border-radius: 10px; border: 0; background: var(--accent); color: white; font-size: 18px; }
+  #send-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .hint { color: var(--text2); font-size: 11px; text-align: center; margin-top: 6px; }
 
-  /* hint */
-  .input-hint { font-size: 11px; color: var(--text2); text-align: center; margin-top: 6px; }
-
-  /* ── System prompt modal ── */
-  #sys-modal {
-    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6);
-    align-items: center; justify-content: center; z-index: 200;
-  }
-  #sys-modal.open { display: flex; }
-  .modal-box {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    padding: 24px; width: 480px; max-width: 95vw; display: flex; flex-direction: column; gap: 12px;
-  }
-  .modal-title { font-size: 16px; font-weight: 700; }
-  #sys-prompt-input {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px; color: var(--text); font-size: 13.5px; resize: vertical;
-    min-height: 120px; outline: none; font-family: inherit;
-  }
-  #sys-prompt-input:focus { border-color: var(--accent); }
+  .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 20; align-items: center; justify-content: center; padding: 16px; }
+  .modal.open { display: flex; }
+  .modal-box { width: min(520px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: grid; gap: 12px; }
+  .modal-title { font-size: 16px; font-weight: 800; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .btn-cancel {
-    background: none; border: 1px solid var(--border); color: var(--text2);
-    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
-  }
-  .btn-save {
-    background: var(--accent); border: none; color: #fff;
-    padding: 8px 18px; border-radius: 8px; cursor: pointer; font-size: 13px;
-  }
 
-  /* ── Scrollbar ── */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 99px; }
-
-  /* ── Empty state ── */
-  #empty-state {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 10px; color: var(--text2); user-select: none;
-  }
-  #empty-state .icon { font-size: 52px; }
-  #empty-state .desc { font-size: 15px; }
-
-  /* ── Sidebar Overlay (mobile) ── */
-  #sidebar-overlay {
-    display: none;
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.5);
-    z-index: 40;
-    -webkit-tap-highlight-color: transparent;
-  }
-  #sidebar-overlay.show { display: block; }
-
-  /* ── Mobile ── */
-  @media (max-width: 640px) {
-    /* use dynamic viewport height so keyboard doesn't break layout */
-    #app { height: 100dvh; }
-
-    /* sidebar slides in from left as overlay */
-    #sidebar {
-      position: fixed;
-      top: 0; left: 0;
-      height: 100%;
-      z-index: 50;
-      transform: translateX(calc(-1 * var(--sidebar-w)));
-      box-shadow: 4px 0 24px rgba(0,0,0,.4);
-    }
+  @media (max-width: 720px) {
+    #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,.4); }
     #sidebar.open { transform: translateX(0); }
-
-    /* hide the collapsed toggle behaviour on mobile — we use .open instead */
-    #sidebar.collapsed { transform: translateX(calc(-1 * var(--sidebar-w))); }
-
-    .msg-row { padding: 2px 10px; }
-    .bubble { max-width: 96%; font-size: 14px; }
-
-    /* bigger touch targets in topbar */
-    #topbar { padding: 0 10px; height: 48px; }
-    #toggle-sidebar { font-size: 22px; padding: 6px 8px; }
-    #sys-prompt-btn { font-size: 11px; padding: 4px 8px; }
-
-    /* input bar: shrink padding, avoid zoom on focus */
-    #msg-input { font-size: 16px; } /* 16px prevents iOS zoom */
-    #input-bar { padding: 8px 10px 12px; }
-
-    /* settings panel items bigger for touch */
-    .settings-input { padding: 10px 10px; font-size: 14px; }
-    #new-chat-btn { padding: 8px 14px; font-size: 14px; }
-
-    /* action buttons */
-    .action-btn { font-size: 22px; padding: 6px 8px; }
-    #send-btn { width: 40px; height: 40px; font-size: 20px; }
+    .bubble { max-width: 96%; }
+    #topbar { padding: 0 10px; }
   }
 </style>
 </head>
 <body>
-<div id="app">
-  <!-- Sidebar overlay (mobile) -->
-  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
-
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-title">💬 Lite Chat</span>
-      <button id="new-chat-btn">＋ 新对话</button>
+<section id="auth-screen">
+  <div class="auth-box">
+    <div class="auth-title">Lite Chat</div>
+    <div class="tabs">
+      <button class="tab active" id="login-tab">登录</button>
+      <button class="tab" id="register-tab">注册</button>
     </div>
-    <div id="session-list"></div>
-
-    <!-- Settings -->
-    <div id="settings-panel">
-      <div class="settings-label">Base URL</div>
-      <input class="settings-input" id="base-url" type="text" placeholder="http://localhost:11434" />
-      <div class="settings-label">API Key（可留空）</div>
-      <input class="settings-input" id="api-key" type="password" placeholder="sk-..." />
-      <div class="settings-label">模型</div>
-      <select class="settings-input" id="model-select">
-        <option value="">── 点击刷新 ──</option>
-      </select>
-    </div>
+    <form class="form" id="auth-form">
+      <div class="field"><label>邮箱</label><input class="input" id="auth-email" type="email" autocomplete="email" required /></div>
+      <div class="field hidden" id="name-field"><label>显示名</label><input class="input" id="auth-name" type="text" autocomplete="name" /></div>
+      <div class="field"><label>密码</label><input class="input" id="auth-password" type="password" autocomplete="current-password" required /></div>
+      <button class="primary" id="auth-submit" type="submit">登录</button>
+      <div id="auth-status"></div>
+    </form>
   </div>
+</section>
 
-  <!-- Main -->
-  <div id="main">
-    <!-- Topbar -->
-    <div id="topbar">
-      <button id="toggle-sidebar" title="折叠侧栏">☰</button>
-      <span id="chat-title">新对话</span>
-      <button id="sys-prompt-btn">⚙ 系统提示</button>
+<div id="app" class="hidden">
+  <aside id="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Lite Chat</span>
+      <button class="secondary" id="new-chat-btn">新对话</button>
     </div>
-
-    <!-- Messages / Empty state -->
-    <div id="messages">
-      <div id="empty-state">
-        <div class="icon">🤖</div>
-        <div class="desc">选择模型，开始对话</div>
+    <div id="conversation-list"></div>
+    <div id="settings-panel">
+      <div id="user-line"></div>
+      <label>Provider</label>
+      <div class="settings-row">
+        <select id="provider-select"></select>
+        <button class="secondary" id="provider-edit-btn">编辑</button>
       </div>
+      <button class="secondary" id="provider-new-btn">添加 Provider</button>
+      <label>模型</label>
+      <select id="model-select"><option value="">选择 Provider 后加载</option></select>
+      <button class="secondary" id="logout-btn">退出登录</button>
+      <div id="status"></div>
     </div>
+  </aside>
 
-    <!-- Image previews -->
+  <main id="main">
+    <div id="topbar">
+      <button class="icon-btn" id="toggle-sidebar" title="侧栏">☰</button>
+      <span id="chat-title">新对话</span>
+      <button class="secondary" id="sys-prompt-btn">系统提示</button>
+    </div>
+    <div id="messages"><div id="empty-state">选择 Provider 和模型，开始对话</div></div>
     <div id="image-previews"></div>
-
-    <!-- Input bar -->
     <div id="input-bar">
       <div id="input-wrap">
-        <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行，支持直接粘贴图片…"></textarea>
+        <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行，支持粘贴图片"></textarea>
         <div id="input-actions">
-          <button class="action-btn" id="upload-btn" title="上传图片">🖼</button>
-          <input type="file" id="file-input" accept="image/*" multiple style="display:none" />
-          <button class="action-btn" id="clear-btn" title="清空对话">🗑</button>
-          <button id="send-btn" title="发送 (Enter)">↑</button>
+          <button class="icon-btn" id="upload-btn" title="上传图片">🖼</button>
+          <input type="file" id="file-input" accept="image/*" multiple hidden />
+          <button class="icon-btn danger" id="clear-btn" title="删除对话">🗑</button>
+          <button id="send-btn" title="发送">↑</button>
         </div>
       </div>
-      <div class="input-hint">Enter 发送 · Shift+Enter 换行 · 可直接粘贴图片</div>
+      <div class="hint">Enter 发送 · Shift+Enter 换行</div>
+    </div>
+  </main>
+</div>
+
+<div class="modal" id="sys-modal">
+  <div class="modal-box">
+    <div class="modal-title">系统提示词</div>
+    <textarea id="sys-prompt-input" rows="6" placeholder="你是一个有用的助手"></textarea>
+    <div class="modal-actions">
+      <button class="secondary" id="sys-cancel">取消</button>
+      <button class="primary" id="sys-save">保存</button>
     </div>
   </div>
 </div>
 
-<!-- System prompt modal -->
-<div id="sys-modal">
-  <div class="modal-box">
-    <div class="modal-title">⚙ 系统提示词 (System Prompt)</div>
-    <textarea id="sys-prompt-input" placeholder="你是一个有用的助手…（留空则不设置）"></textarea>
+<div class="modal" id="provider-modal">
+  <form class="modal-box" id="provider-form">
+    <div class="modal-title" id="provider-modal-title">Provider</div>
+    <div class="field"><label>名称</label><input class="input" id="provider-name" required /></div>
+    <div class="field"><label>Base URL</label><input class="input" id="provider-base-url" placeholder="http://localhost:11434" required /></div>
+    <div class="field"><label>API Key</label><input class="input" id="provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
+    <div class="field"><label>默认模型</label><input class="input" id="provider-default-model" /></div>
+    <div class="field"><label><input id="provider-is-default" type="checkbox" /> 设为默认 Provider</label></div>
     <div class="modal-actions">
-      <button class="btn-cancel" id="modal-cancel">取消</button>
-      <button class="btn-save" id="modal-save">保存</button>
+      <button class="secondary" id="provider-cancel" type="button">取消</button>
+      <button class="primary" type="submit">保存</button>
     </div>
-  </div>
+  </form>
 </div>
 
 <script>
-// ── Storage helpers ────────────────────────────────────────
 const LS = {
-  get: (k, d) => { try { const v = localStorage.getItem(k); return v !== null ? JSON.parse(v) : d } catch { return d } },
-  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+  get: (key, fallback) => { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
+  set: (key, value) => localStorage.setItem(key, JSON.stringify(value)),
+  del: (key) => localStorage.removeItem(key),
 }
 
-// ── Marked config ─────────────────────────────────────────
 marked.setOptions({ breaks: true, gfm: true })
 const renderer = new marked.Renderer()
 renderer.code = ({ text, lang }) => {
-  const highlighted = (lang && hljs.getLanguage(lang))
-    ? hljs.highlight(text, { language: lang }).value
-    : hljs.highlightAuto(text).value
-  return `<pre><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="hljs language-${lang||''}">${highlighted}</code></pre>`
+  const highlighted = lang && hljs.getLanguage(lang) ? hljs.highlight(text, { language: lang }).value : hljs.highlightAuto(text).value
+  return `<pre><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="hljs language-${escAttr(lang || '')}">${highlighted}</code></pre>`
 }
 marked.use({ renderer })
 
-function copyCode(btn) {
-  const code = btn.nextElementSibling.innerText
-  navigator.clipboard.writeText(code).then(() => { btn.textContent = '已复制'; setTimeout(() => btn.textContent = '复制', 1500) })
-}
-
-// ── State ─────────────────────────────────────────────────
-let sessions   = LS.get('sessions', {})   // { id: { title, messages, sysPrompt } }
-let sessionIds = LS.get('sessionIds', []) // ordered list
-let curId      = LS.get('curId', null)
-let pendingImages = []  // [{url, dataUrl}] for current input
+let authToken = LS.get('authToken', '')
+let currentUser = null
+let providers = []
+let conversations = []
+let currentConversation = null
+let messages = []
+let pendingImages = []
 let isStreaming = false
+let authMode = 'login'
+let editingProviderId = null
 
-// ── DOM refs ──────────────────────────────────────────────
-const $msgs    = document.getElementById('messages')
-const $empty   = document.getElementById('empty-state')
-const $input   = document.getElementById('msg-input')
-const $send    = document.getElementById('send-btn')
-const $previews = document.getElementById('image-previews')
-const $title   = document.getElementById('chat-title')
-const $list    = document.getElementById('session-list')
-const $baseUrl = document.getElementById('base-url')
-const $apiKey  = document.getElementById('api-key')
-const $model   = document.getElementById('model-select')
-
-// ── Session CRUD ──────────────────────────────────────────
-function newSession() {
-  const id = 'sess_' + Date.now()
-  sessions[id] = { title: '新对话', messages: [], sysPrompt: LS.get('globalSysPrompt', '') }
-  sessionIds.unshift(id)
-  save()
-  switchSession(id)
-}
-function deleteSession(id) {
-  delete sessions[id]
-  sessionIds = sessionIds.filter(x => x !== id)
-  save()
-  if (curId === id) curId = sessionIds[0] || null
-  renderSidebar()
-  if (curId) switchSession(curId)
-  else { renderMessages([]); $title.textContent = '新对话' }
-}
-function switchSession(id) {
-  curId = id
-  LS.set('curId', id)
-  renderSidebar()
-  renderMessages(sessions[id]?.messages || [])
-  $title.textContent = sessions[id]?.title || '新对话'
-  pendingImages = []
-  renderImagePreviews()
-}
-function save() {
-  LS.set('sessions', sessions)
-  LS.set('sessionIds', sessionIds)
-  LS.set('curId', curId)
+const $ = (id) => document.getElementById(id)
+const refs = {
+  authScreen: $('auth-screen'), app: $('app'), authForm: $('auth-form'), authStatus: $('auth-status'),
+  loginTab: $('login-tab'), registerTab: $('register-tab'), nameField: $('name-field'), authSubmit: $('auth-submit'),
+  list: $('conversation-list'), title: $('chat-title'), messages: $('messages'), input: $('msg-input'),
+  send: $('send-btn'), previews: $('image-previews'), providerSelect: $('provider-select'), model: $('model-select'),
+  status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
+  sysInput: $('sys-prompt-input'), providerModal: $('provider-modal'), providerForm: $('provider-form'),
 }
 
-// ── Render sidebar ────────────────────────────────────────
-function renderSidebar() {
-  $list.innerHTML = ''
-  for (const id of sessionIds) {
-    const s = sessions[id]
-    const el = document.createElement('div')
-    el.className = 'session-item' + (id === curId ? ' active' : '')
-    el.innerHTML = `<span class="title">${escHtml(s.title)}</span><button class="session-del" title="删除">✕</button>`
-    el.querySelector('.title').onclick = () => { switchSession(id); if (isMobile()) closeSidebar() }
-    el.querySelector('.session-del').onclick = (e) => { e.stopPropagation(); if(confirm('删除该对话？')) deleteSession(id) }
-    $list.appendChild(el)
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}) }
+  const isForm = options.body instanceof FormData
+  if (!isForm) headers['Content-Type'] = 'application/json'
+  if (authToken) headers.Authorization = `Bearer ${authToken}`
+  const res = await fetch(path, { ...options, headers })
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    try { message = (await res.json()).error || message } catch {}
+    throw new Error(message)
+  }
+  if (res.status === 204) return null
+  return res.json()
+}
+
+function setStatus(text, danger = true) {
+  refs.status.textContent = text || ''
+  refs.status.style.color = danger ? 'var(--danger)' : 'var(--ok)'
+}
+
+function setAuthMode(mode) {
+  authMode = mode
+  refs.loginTab.classList.toggle('active', mode === 'login')
+  refs.registerTab.classList.toggle('active', mode === 'register')
+  refs.nameField.classList.toggle('hidden', mode === 'login')
+  refs.authSubmit.textContent = mode === 'login' ? '登录' : '创建账号'
+  refs.authStatus.textContent = ''
+}
+
+refs.loginTab.onclick = () => setAuthMode('login')
+refs.registerTab.onclick = () => setAuthMode('register')
+
+refs.authForm.onsubmit = async (event) => {
+  event.preventDefault()
+  refs.authStatus.textContent = ''
+  const body = {
+    email: $('auth-email').value.trim(),
+    password: $('auth-password').value,
+    displayName: $('auth-name').value.trim(),
+  }
+  try {
+    const data = await api(`/api/auth/${authMode}`, { method: 'POST', body: JSON.stringify(body) })
+    authToken = data.token
+    currentUser = data.user
+    LS.set('authToken', authToken)
+    await enterApp()
+  } catch (err) {
+    refs.authStatus.textContent = err.message
   }
 }
 
-// ── Render messages ───────────────────────────────────────
-function renderMessages(messages) {
-  $msgs.innerHTML = ''
-  if (!messages.length) { $msgs.appendChild($empty); return }
-  for (const m of messages) appendMessage(m, false)
+async function enterApp() {
+  refs.authScreen.classList.add('hidden')
+  refs.app.classList.remove('hidden')
+  refs.userLine.textContent = currentUser?.email || ''
+  await Promise.all([loadProviders(), loadConversations(), loadSettings()])
+  const activeId = LS.get('activeConversationId', null)
+  if (activeId && conversations.some((c) => c.id === activeId)) await switchConversation(activeId)
+  else if (conversations[0]) await switchConversation(conversations[0].id)
+  else renderMessages([])
+}
+
+async function loadSettings() {
+  try { await api('/api/settings') } catch {}
+}
+
+async function loadProviders() {
+  const data = await api('/api/providers')
+  providers = data.providers || []
+  refs.providerSelect.innerHTML = providers.length
+    ? providers.map((p) => `<option value="${escAttr(p.id)}">${escHtml(p.name)}${p.isDefault ? ' *' : ''}</option>`).join('')
+    : '<option value="">没有 Provider</option>'
+  const saved = LS.get('activeProviderId', '')
+  const selected = providers.find((p) => p.id === saved) || providers.find((p) => p.isDefault) || providers[0]
+  if (selected) refs.providerSelect.value = selected.id
+  await loadModels()
+}
+
+async function loadModels() {
+  const providerId = refs.providerSelect.value
+  refs.model.innerHTML = '<option value="">加载中...</option>'
+  if (!providerId) {
+    refs.model.innerHTML = '<option value="">请先添加 Provider</option>'
+    return
+  }
+  LS.set('activeProviderId', providerId)
+  try {
+    const { models } = await api(`/api/providers/${providerId}/models`)
+    const provider = providers.find((p) => p.id === providerId)
+    const preferred = LS.get('lastModel', '') || provider?.defaultModel || currentConversation?.model || ''
+    refs.model.innerHTML = (models || []).map((m) => `<option value="${escAttr(m)}"${m === preferred ? ' selected' : ''}>${escHtml(m)}</option>`).join('')
+    if (!refs.model.innerHTML) refs.model.innerHTML = '<option value="">没有可用模型</option>'
+  } catch (err) {
+    refs.model.innerHTML = '<option value="">模型加载失败</option>'
+    setStatus(err.message)
+  }
+}
+
+async function loadConversations() {
+  const data = await api('/api/conversations')
+  conversations = data.conversations || []
+  renderSidebar()
+}
+
+function renderSidebar() {
+  refs.list.innerHTML = ''
+  for (const c of conversations) {
+    const row = document.createElement('div')
+    row.className = `conversation${currentConversation?.id === c.id ? ' active' : ''}`
+    row.innerHTML = `<span class="conversation-title">${escHtml(c.title)}</span><button class="icon-btn danger" title="删除">✕</button>`
+    row.querySelector('.conversation-title').onclick = () => switchConversation(c.id)
+    row.querySelector('button').onclick = async (event) => {
+      event.stopPropagation()
+      if (!confirm('删除该对话？')) return
+      await api(`/api/conversations/${c.id}`, { method: 'DELETE' })
+      if (currentConversation?.id === c.id) {
+        currentConversation = null
+        messages = []
+        refs.title.textContent = '新对话'
+        LS.del('activeConversationId')
+        renderMessages([])
+      }
+      await loadConversations()
+    }
+    refs.list.appendChild(row)
+  }
+}
+
+async function newConversation() {
+  const providerId = refs.providerSelect.value || null
+  const model = refs.model.value || null
+  const data = await api('/api/conversations', {
+    method: 'POST',
+    body: JSON.stringify({ title: '新对话', providerId, model }),
+  })
+  await loadConversations()
+  await switchConversation(data.conversation.id)
+}
+
+async function switchConversation(id) {
+  const data = await api(`/api/conversations/${id}`)
+  currentConversation = data.conversation
+  messages = data.messages || []
+  refs.title.textContent = currentConversation.title || '新对话'
+  LS.set('activeConversationId', id)
+  if (currentConversation.providerId) refs.providerSelect.value = currentConversation.providerId
+  if (currentConversation.model) refs.model.value = currentConversation.model
+  renderSidebar()
+  renderMessages(messages)
+  if (window.innerWidth <= 720) refs.sidebar.classList.remove('open')
+}
+
+function renderMessages(items) {
+  refs.messages.innerHTML = ''
+  if (!items.length) {
+    refs.messages.innerHTML = '<div id="empty-state">选择 Provider 和模型，开始对话</div>'
+    return
+  }
+  for (const msg of items) appendMessage(msg, false)
   scrollToBottom()
 }
 
 function appendMessage(msg, scroll = true) {
-  if ($msgs.contains($empty)) $empty.remove()
-
   const row = document.createElement('div')
-  row.className = 'msg-row ' + msg.role
+  row.className = `msg-row ${msg.role}`
   const label = document.createElement('div')
   label.className = 'msg-label'
   label.textContent = msg.role === 'user' ? '你' : '助手'
   const bubble = document.createElement('div')
   bubble.className = 'bubble'
-
   if (msg.role === 'user') {
-    // user: may contain images
-    let html = ''
-    if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part.type === 'text') html += `<p>${escHtml(part.text)}</p>`
-        else if (part.type === 'image_url') html += `<img src="${part.image_url.url}" />`
-      }
-    } else {
-      html = `<p>${escHtml(msg.content)}</p>`
-    }
-    bubble.innerHTML = html
+    bubble.innerHTML = renderUserContent(msg.content)
   } else {
-    // assistant: markdown
-    bubble.innerHTML = marked.parse(msg.content || '')
+    bubble.innerHTML = marked.parse(String(msg.content || ''))
   }
-
-  row.appendChild(label)
-  row.appendChild(bubble)
-  row.dataset.msgIndex = (sessions[curId]?.messages.length - 1) || 0
-  $msgs.appendChild(row)
+  row.append(label, bubble)
+  refs.messages.appendChild(row)
   if (scroll) scrollToBottom()
   return bubble
 }
 
-function scrollToBottom() {
-  $msgs.scrollTo({ top: $msgs.scrollHeight, behavior: 'smooth' })
+function renderUserContent(content) {
+  if (!Array.isArray(content)) return `<p>${escHtml(content || '')}</p>`
+  return content.map((part) => {
+    if (part.type === 'text') return `<p>${escHtml(part.text || '')}</p>`
+    if (part.type === 'image_url') return `<img src="${escAttr(part.image_url?.url || '')}" />`
+    return ''
+  }).join('')
 }
 
-// ── Image handling ────────────────────────────────────────
-function renderImagePreviews() {
-  $previews.innerHTML = ''
-  for (let i = 0; i < pendingImages.length; i++) {
-    const img = pendingImages[i]
-    const wrap = document.createElement('div')
-    wrap.className = 'img-preview-wrap'
-    wrap.innerHTML = `<img src="${img.dataUrl}" /><button class="remove-img" data-i="${i}">✕</button>`
-    wrap.querySelector('.remove-img').onclick = () => { pendingImages.splice(i, 1); renderImagePreviews() }
-    $previews.appendChild(wrap)
+function scrollToBottom() {
+  refs.messages.scrollTo({ top: refs.messages.scrollHeight, behavior: 'smooth' })
+}
+
+async function sendMessage() {
+  if (isStreaming) return
+  const text = refs.input.value.trim()
+  if (!text && !pendingImages.length) return
+  if (!refs.providerSelect.value) return setStatus('请先添加 Provider')
+  if (!refs.model.value) return setStatus('请先选择模型')
+  if (!currentConversation) await newConversation()
+
+  let content = text
+  if (pendingImages.length) {
+    content = []
+    if (text) content.push({ type: 'text', text })
+    for (const img of pendingImages) content.push({ type: 'image_url', image_url: { url: img.serverUrl } })
+  }
+
+  const userMsg = { role: 'user', content }
+  appendMessage(userMsg)
+  refs.input.value = ''
+  refs.input.style.height = ''
+  pendingImages = []
+  renderImagePreviews()
+
+  const assistantMsg = { role: 'assistant', content: '' }
+  const bubble = appendMessage(assistantMsg)
+  bubble.innerHTML = '<span style="color:var(--text2);font-style:italic">思考中</span><span class="cursor"></span>'
+
+  isStreaming = true
+  refs.send.disabled = true
+  setStatus('')
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+      body: JSON.stringify({
+        conversationId: currentConversation.id,
+        providerId: refs.providerSelect.value,
+        model: refs.model.value,
+        message: { role: 'user', content },
+        stream: true,
+      }),
+    })
+    if (!res.ok) {
+      let message = `HTTP ${res.status}`
+      try { message = (await res.json()).error || message } catch {}
+      throw new Error(message)
+    }
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let raw = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop()
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const payload = line.slice(6).trim()
+        if (!payload || payload === '[DONE]') continue
+        try {
+          const chunk = JSON.parse(payload)
+          raw += chunk.choices?.[0]?.delta?.content || ''
+          bubble.innerHTML = marked.parse(raw) + '<span class="cursor"></span>'
+          scrollToBottom()
+        } catch {}
+      }
+    }
+    bubble.innerHTML = marked.parse(raw)
+    LS.set('lastModel', refs.model.value)
+    await loadConversations()
+    await switchConversation(currentConversation.id)
+  } catch (err) {
+    bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+  } finally {
+    isStreaming = false
+    refs.send.disabled = false
   }
 }
 
 async function uploadImage(file) {
   const fd = new FormData()
   fd.append('file', file)
-  try {
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    const json = await res.json()
-    return json.url  // /uploads/xxx.jpg
-  } catch {
-    return null
-  }
+  const json = await api('/api/upload', { method: 'POST', body: fd })
+  return json.url
 }
 
 async function addImageFile(file) {
   const dataUrl = await readAsDataURL(file)
   const serverUrl = await uploadImage(file)
-  pendingImages.push({ dataUrl, serverUrl: serverUrl || dataUrl })
+  pendingImages.push({ dataUrl, serverUrl })
   renderImagePreviews()
+}
+
+function renderImagePreviews() {
+  refs.previews.innerHTML = ''
+  pendingImages.forEach((img, index) => {
+    const wrap = document.createElement('div')
+    wrap.className = 'img-preview-wrap'
+    wrap.innerHTML = `<img src="${escAttr(img.dataUrl)}" /><button class="remove-img">×</button>`
+    wrap.querySelector('button').onclick = () => { pendingImages.splice(index, 1); renderImagePreviews() }
+    refs.previews.appendChild(wrap)
+  })
 }
 
 function readAsDataURL(file) {
-  return new Promise(res => { const r = new FileReader(); r.onload = e => res(e.target.result); r.readAsDataURL(file) })
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = (event) => resolve(event.target.result)
+    reader.readAsDataURL(file)
+  })
 }
 
-// Paste handler
-document.addEventListener('paste', async (e) => {
-  const items = Array.from(e.clipboardData?.items || [])
-  for (const item of items) {
+function openProviderModal(provider = null) {
+  editingProviderId = provider?.id || null
+  $('provider-modal-title').textContent = provider ? '编辑 Provider' : '添加 Provider'
+  $('provider-name').value = provider?.name || ''
+  $('provider-base-url').value = provider?.baseUrl || 'http://localhost:11434'
+  $('provider-api-key').value = ''
+  $('provider-default-model').value = provider?.defaultModel || ''
+  $('provider-is-default').checked = Boolean(provider?.isDefault)
+  refs.providerModal.classList.add('open')
+}
+
+refs.providerForm.onsubmit = async (event) => {
+  event.preventDefault()
+  const body = {
+    name: $('provider-name').value.trim(),
+    baseUrl: $('provider-base-url').value.trim(),
+    defaultModel: $('provider-default-model').value.trim(),
+    isDefault: $('provider-is-default').checked,
+  }
+  const apiKey = $('provider-api-key').value.trim()
+  if (apiKey || !editingProviderId) body.apiKey = apiKey
+  const path = editingProviderId ? `/api/providers/${editingProviderId}` : '/api/providers'
+  const method = editingProviderId ? 'PATCH' : 'POST'
+  await api(path, { method, body: JSON.stringify(body) })
+  refs.providerModal.classList.remove('open')
+  await loadProviders()
+}
+
+function copyCode(btn) {
+  navigator.clipboard.writeText(btn.nextElementSibling.innerText).then(() => {
+    btn.textContent = '已复制'
+    setTimeout(() => { btn.textContent = '复制' }, 1200)
+  })
+}
+
+function escHtml(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+function escAttr(value) {
+  return escHtml(value).replace(/'/g, '&#39;')
+}
+
+$('logout-btn').onclick = async () => {
+  try { await api('/api/auth/logout', { method: 'POST' }) } catch {}
+  LS.del('authToken')
+  LS.del('activeConversationId')
+  LS.del('activeProviderId')
+  location.reload()
+}
+$('new-chat-btn').onclick = newConversation
+$('provider-new-btn').onclick = () => openProviderModal()
+$('provider-edit-btn').onclick = () => openProviderModal(providers.find((p) => p.id === refs.providerSelect.value))
+$('provider-cancel').onclick = () => refs.providerModal.classList.remove('open')
+refs.providerSelect.onchange = loadModels
+refs.model.onchange = () => LS.set('lastModel', refs.model.value)
+$('toggle-sidebar').onclick = () => refs.sidebar.classList.toggle('open')
+$('send-btn').onclick = sendMessage
+refs.input.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() }
+})
+refs.input.addEventListener('input', () => {
+  refs.input.style.height = 'auto'
+  refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
+})
+$('upload-btn').onclick = () => $('file-input').click()
+$('file-input').onchange = async (event) => {
+  for (const file of event.target.files) await addImageFile(file)
+  event.target.value = ''
+}
+document.addEventListener('paste', async (event) => {
+  for (const item of Array.from(event.clipboardData?.items || [])) {
     if (item.type.startsWith('image/')) {
       const file = item.getAsFile()
-      if (file) { e.preventDefault(); await addImageFile(file) }
+      if (file) { event.preventDefault(); await addImageFile(file) }
     }
   }
 })
-
-// File input
-document.getElementById('file-input').addEventListener('change', async (e) => {
-  for (const f of e.target.files) await addImageFile(f)
-  e.target.value = ''
-})
-document.getElementById('upload-btn').onclick = () => document.getElementById('file-input').click()
-
-// ── Send message ──────────────────────────────────────────
-async function sendMessage() {
-  if (isStreaming) return
-  const text = $input.value.trim()
-  if (!text && !pendingImages.length) return
-
-  // ensure session exists
-  if (!curId) newSession()
-
-  const model = $model.value
-  if (!model) { alert('请先选择模型！'); return }
-
-  // build user content
-  let userContent
-  if (pendingImages.length) {
-    userContent = []
-    if (text) userContent.push({ type: 'text', text })
-    for (const img of pendingImages) userContent.push({ type: 'image_url', image_url: { url: img.serverUrl } })
-  } else {
-    userContent = text
-  }
-
-  const userMsg = { role: 'user', content: userContent }
-  sessions[curId].messages.push(userMsg)
-
-  // auto-title from first message
-  if (sessions[curId].messages.length === 1) {
-    sessions[curId].title = (text || '图片消息').slice(0, 28)
-    $title.textContent = sessions[curId].title
-  }
-
-  appendMessage(userMsg)
-
-  $input.value = ''
-  $input.style.height = ''
-  pendingImages = []
-  renderImagePreviews()
-  save()
-
-  // assistant placeholder
-  const assistantMsg = { role: 'assistant', content: '' }
-  sessions[curId].messages.push(assistantMsg)
-  const bubble = appendMessage(assistantMsg)
-  bubble.innerHTML = '<span class="thinking">思考中</span><span class="cursor"></span>'
-
-  isStreaming = true
-  $send.disabled = true
-
-  // build messages array
-  const sysPrompt = sessions[curId].sysPrompt || ''
-  const apiMessages = []
-  if (sysPrompt) apiMessages.push({ role: 'system', content: sysPrompt })
-  apiMessages.push(...sessions[curId].messages.slice(0, -1)) // all except empty assistant
-
-  const baseUrl = $baseUrl.value.trim() || 'http://localhost:11434'
-  const apiKey = $apiKey.value.trim()
-
-  try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-base-url': baseUrl,
-        ...(apiKey ? { 'x-api-key': apiKey } : {}),
-      },
-      body: JSON.stringify({ model, messages: apiMessages, stream: true }),
-    })
-
-    if (!res.ok) {
-      const err = await res.json()
-      throw new Error(err.error || `HTTP ${res.status}`)
-    }
-
-    const reader = res.body.getReader()
-    const dec = new TextDecoder()
-    let accum = ''
-    let rawContent = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      accum += dec.decode(value, { stream: true })
-      const lines = accum.split('\n')
-      accum = lines.pop()
-
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const payload = line.slice(6).trim()
-        if (payload === '[DONE]') continue
-        try {
-          const chunk = JSON.parse(payload)
-          const delta = chunk.choices?.[0]?.delta?.content || ''
-          rawContent += delta
-          bubble.innerHTML = marked.parse(rawContent) + '<span class="cursor"></span>'
-          scrollToBottom()
-        } catch {}
-      }
-    }
-
-    // finalize
-    bubble.innerHTML = marked.parse(rawContent)
-    assistantMsg.content = rawContent
-    save()
-
-  } catch (err) {
-    bubble.innerHTML = `<span style="color:var(--danger)">❌ ${escHtml(err.message)}</span>`
-    sessions[curId].messages.pop()
-    save()
-  } finally {
-    isStreaming = false
-    $send.disabled = false
-  }
+$('sys-prompt-btn').onclick = () => {
+  refs.sysInput.value = currentConversation?.systemPrompt || ''
+  refs.sysModal.classList.add('open')
 }
-
-// ── Settings persistence ──────────────────────────────────
-$baseUrl.value = LS.get('baseUrl', '')
-$apiKey.value  = LS.get('apiKey', '')
-$baseUrl.addEventListener('input', () => { LS.set('baseUrl', $baseUrl.value); loadModels() })
-$apiKey.addEventListener('input',  () => { LS.set('apiKey',  $apiKey.value);  loadModels() })
-$model.addEventListener('focus', loadModels)
-$model.addEventListener('change', () => LS.set('lastModel', $model.value))
-
-async function loadModels() {
-  const baseUrl = $baseUrl.value.trim() || 'http://localhost:11434'
-  const apiKey  = $apiKey.value.trim()
-  try {
-    const res = await fetch('/api/models', {
-      headers: { 'x-base-url': baseUrl, ...(apiKey ? { 'x-api-key': apiKey } : {}) }
-    })
-    const { models } = await res.json()
-    if (!models?.length) return
-    const lastModel = LS.get('lastModel', '')
-    $model.innerHTML = models.map(m => `<option value="${m}"${m===lastModel?' selected':''}>${m}</option>`).join('')
-  } catch {}
+$('sys-cancel').onclick = () => refs.sysModal.classList.remove('open')
+$('sys-save').onclick = async () => {
+  if (!currentConversation) await newConversation()
+  const systemPrompt = refs.sysInput.value.trim()
+  const data = await api(`/api/conversations/${currentConversation.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ systemPrompt }),
+  })
+  currentConversation = data.conversation
+  refs.sysModal.classList.remove('open')
 }
-
-// ── System prompt ─────────────────────────────────────────
-const $sysModal   = document.getElementById('sys-modal')
-const $sysInput   = document.getElementById('sys-prompt-input')
-document.getElementById('sys-prompt-btn').onclick = () => {
-  $sysInput.value = (curId && sessions[curId]?.sysPrompt) || LS.get('globalSysPrompt', '')
-  $sysModal.classList.add('open')
-}
-document.getElementById('modal-cancel').onclick = () => $sysModal.classList.remove('open')
-document.getElementById('modal-save').onclick = () => {
-  const val = $sysInput.value.trim()
-  LS.set('globalSysPrompt', val)
-  if (curId) sessions[curId].sysPrompt = val
-  save()
-  $sysModal.classList.remove('open')
-}
-$sysModal.addEventListener('click', e => { if (e.target === $sysModal) $sysModal.classList.remove('open') })
-
-// ── Clear chat ────────────────────────────────────────────
-document.getElementById('clear-btn').onclick = () => {
-  if (!curId) return
-  if (!confirm('清空当前对话？')) return
-  sessions[curId].messages = []
-  sessions[curId].title = '新对话'
-  $title.textContent = '新对话'
-  save()
+$('clear-btn').onclick = async () => {
+  if (!currentConversation || !confirm('删除当前对话？')) return
+  await api(`/api/conversations/${currentConversation.id}`, { method: 'DELETE' })
+  currentConversation = null
+  messages = []
+  refs.title.textContent = '新对话'
   renderMessages([])
+  await loadConversations()
+}
+for (const modal of [refs.sysModal, refs.providerModal]) {
+  modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.remove('open') })
 }
 
-// ── Sidebar toggle ────────────────────────────────────────
-const $sidebar = document.getElementById('sidebar')
-const $overlay = document.getElementById('sidebar-overlay')
-
-function isMobile() { return window.innerWidth <= 640 }
-
-function openSidebar() {
-  $sidebar.classList.add('open')
-  $sidebar.classList.remove('collapsed')
-  if (isMobile()) $overlay.classList.add('show')
-}
-
-function closeSidebar() {
-  if (isMobile()) {
-    $sidebar.classList.remove('open')
-    $overlay.classList.remove('show')
-  } else {
-    $sidebar.classList.toggle('collapsed')
+;(async function init() {
+  if (!authToken) return
+  try {
+    const data = await api('/api/auth/me')
+    currentUser = data.user
+    await enterApp()
+  } catch {
+    LS.del('authToken')
+    authToken = ''
   }
-}
-
-document.getElementById('toggle-sidebar').onclick = () => {
-  if (isMobile()) {
-    if ($sidebar.classList.contains('open')) closeSidebar()
-    else openSidebar()
-  } else {
-    $sidebar.classList.toggle('collapsed')
-  }
-}
-document.getElementById('new-chat-btn').onclick = newSession
-
-// ── Input events ──────────────────────────────────────────
-$input.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage() }
-})
-$input.addEventListener('input', () => {
-  $input.style.height = 'auto'
-  $input.style.height = Math.min($input.scrollHeight, 200) + 'px'
-})
-$send.onclick = sendMessage
-
-// ── Util ──────────────────────────────────────────────────
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')
-}
-
-// ── Init ─────────────────────────────────────────────────
-;(function init() {
-  if (!sessionIds.length) newSession()
-  else {
-    renderSidebar()
-    const id = curId && sessions[curId] ? curId : sessionIds[0]
-    switchSession(id)
-  }
-  loadModels()
 })()
 </script>
 </body>

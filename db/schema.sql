@@ -1,0 +1,68 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  display_name TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_login_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS providers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  api_key_ciphertext TEXT,
+  provider_type TEXT NOT NULL DEFAULT 'openai_compatible',
+  default_model TEXT,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT providers_name_per_user UNIQUE (user_id, name)
+);
+
+CREATE INDEX IF NOT EXISTS providers_user_id_idx ON providers(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS providers_one_default_per_user_idx ON providers(user_id) WHERE is_default = true;
+
+CREATE TABLE IF NOT EXISTS conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  provider_id UUID REFERENCES providers(id) ON DELETE SET NULL,
+  title TEXT NOT NULL DEFAULT '新对话',
+  system_prompt TEXT,
+  model TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  archived_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS conversations_user_id_updated_at_idx ON conversations(user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('system', 'user', 'assistant', 'tool')),
+  content JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  token_count INTEGER,
+  error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS messages_conversation_created_at_idx ON messages(conversation_id, created_at ASC);
+CREATE INDEX IF NOT EXISTS messages_user_id_idx ON messages(user_id);
+
+CREATE TABLE IF NOT EXISTS settings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  value JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CONSTRAINT settings_key_per_user UNIQUE (user_id, key)
+);
+
+CREATE INDEX IF NOT EXISTS settings_user_id_idx ON settings(user_id);
