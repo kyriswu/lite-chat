@@ -52,6 +52,21 @@ export async function runMigrations() {
     )
   `)
   await query('CREATE INDEX IF NOT EXISTS skills_sort_idx ON skills(sort_order ASC, created_at ASC)')
+  await query(`
+    CREATE TABLE IF NOT EXISTS skill_files (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
+      relative_path TEXT NOT NULL,
+      file_size INTEGER,
+      mime_type TEXT,
+      storage_path TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query('CREATE INDEX IF NOT EXISTS skill_files_skill_id_idx ON skill_files(skill_id)')
+  await query('ALTER TABLE skills ADD COLUMN IF NOT EXISTS clawhub_slug TEXT')
+  await query('ALTER TABLE skills ADD COLUMN IF NOT EXISTS clawhub_version TEXT')
+  await query('ALTER TABLE skills ADD COLUMN IF NOT EXISTS clawhub_imported_at TIMESTAMPTZ')
 }
 
 export async function closePool() {

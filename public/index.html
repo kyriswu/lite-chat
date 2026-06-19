@@ -113,9 +113,15 @@
   /* 管理员 skill 列表 */
   .admin-skill-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
   .admin-skill-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .admin-skill-row.has-files { cursor: pointer; }
   .admin-skill-name { font-weight: 650; }
   .admin-skill-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .admin-skill-actions { display: flex; gap: 6px; }
+  .skill-files-badge { font-size: 12px; padding: 4px 7px; color: var(--accent2); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; }
+  .skill-files-list { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 8px; display: grid; gap: 5px; cursor: default; }
+  .skill-file-item { display: flex; justify-content: space-between; gap: 12px; color: var(--text2); font-size: 12px; }
+  .skill-file-path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .clawhub-attachment-preview { color: var(--text2); font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
   .clawhub-result-item { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:13px; transition:background .15s; }
   .clawhub-result-item:last-child { border-bottom:none; }
   .clawhub-result-item:hover { background:var(--surface3,#2a2a3a); }
@@ -240,9 +246,11 @@
       <div class="admin-skill-list" id="admin-skill-list"></div>
       <form class="form" id="admin-skill-form">
         <input type="hidden" id="admin-skill-id" />
+        <input type="hidden" id="admin-skill-clawhub-slug" />
         <div class="field"><label>图标 Emoji</label><input class="input" id="admin-skill-icon" value="🤖" maxlength="4" style="width:60px" /></div>
         <div class="field"><label>名称</label><input class="input" id="admin-skill-name" required /></div>
         <div class="field"><label>描述（一句话）</label><input class="input" id="admin-skill-desc" /></div>
+        <div class="clawhub-attachment-preview hidden" id="clawhub-attachment-preview"></div>
         <div class="field"><label>System Prompt</label><textarea class="input" id="admin-skill-prompt" rows="4" required style="resize:vertical"></textarea></div>
         <div class="field"><label>排序</label><input class="input" id="admin-skill-order" type="number" value="0" /></div>
         <div class="field"><label><input type="checkbox" id="admin-skill-active" checked /> 启用</label></div>
@@ -282,6 +290,7 @@ let authMode = 'login'
 let adminProviders = []
 let skills = []
 let adminSkills = []
+let adminSkillFiles = {}
 let activeSkillId = null
 
 const $ = (id) => document.getElementById(id)
@@ -707,31 +716,99 @@ async function loadAdminProviders() {
 
 function clearAdminSkillForm() {
   $('admin-skill-id').value = ''
+  $('admin-skill-clawhub-slug').value = ''
   $('admin-skill-icon').value = '🤖'
   $('admin-skill-name').value = ''
   $('admin-skill-desc').value = ''
   $('admin-skill-prompt').value = ''
   $('admin-skill-order').value = '0'
   $('admin-skill-active').checked = true
+  $('clawhub-attachment-preview').classList.add('hidden')
+  $('clawhub-attachment-preview').textContent = ''
+}
+
+function formatBytes(bytes) {
+  const size = Number(bytes) || 0
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function renderAttachmentPreview(files = []) {
+  const preview = $('clawhub-attachment-preview')
+  if (!files.length) {
+    preview.classList.add('hidden')
+    preview.textContent = ''
+    return
+  }
+  const shown = files.slice(0, 3).join(', ')
+  const extra = files.length > 3 ? `, +${files.length - 3} 个` : ''
+  preview.textContent = `📎 附带 ${files.length} 个附件文件：${shown}${extra}`
+  preview.classList.remove('hidden')
+}
+
+async function toggleAdminSkillFiles(skill, row) {
+  const existing = row.querySelector('.skill-files-list')
+  if (existing) {
+    existing.remove()
+    return
+  }
+
+  const list = document.createElement('div')
+  list.className = 'skill-files-list'
+  list.innerHTML = '<div class="admin-skill-meta">正在加载附件…</div>'
+  list.onclick = (e) => e.stopPropagation()
+  row.appendChild(list)
+  try {
+    if (!adminSkillFiles[skill.id]) {
+      const data = await api(`/api/admin/skills/${skill.id}/files`)
+      adminSkillFiles[skill.id] = data.files || []
+    }
+    const files = adminSkillFiles[skill.id]
+    list.innerHTML = files.length
+      ? files.map((file) => `
+          <div class="skill-file-item">
+            <span class="skill-file-path" title="${escAttr(file.relative_path)}">${escHtml(file.relative_path)}</span>
+            <span>${escHtml(formatBytes(file.file_size))}</span>
+          </div>
+        `).join('')
+      : '<div class="admin-skill-meta">暂无附件文件</div>'
+  } catch (err) {
+    list.innerHTML = `<div class="admin-skill-meta danger">附件加载失败：${escHtml(err.message)}</div>`
+  }
 }
 
 function renderAdminSkillList() {
   refs.adminSkillList.innerHTML = adminSkills.length ? '' : '<div id="empty-state">暂无 Skill</div>'
   for (const skill of adminSkills) {
     const row = document.createElement('div')
-    row.className = 'admin-skill-row'
+    row.className = `admin-skill-row${skill.files_count > 0 ? ' has-files' : ''}`
+    const filesBadge = skill.files_count > 0 ? `<button class="skill-files-badge" type="button" title="查看附件文件">📎 ${escHtml(skill.files_count)}</button>` : ''
     row.innerHTML = `
       <div>
         <div class="admin-skill-name">${escHtml(skill.icon || '🤖')} ${escHtml(skill.name)}</div>
         <div class="admin-skill-meta">${skill.is_active ? '已启用' : '已停用'} · 排序 ${escHtml(skill.sort_order ?? 0)}${skill.description ? ' · ' + escHtml(skill.description) : ''}</div>
       </div>
       <div class="admin-skill-actions">
+        ${filesBadge}
         <button class="secondary" type="button">编辑</button>
         <button class="secondary danger" type="button">删除</button>
       </div>`
-    const [editBtn, deleteBtn] = row.querySelectorAll('button')
-    editBtn.onclick = () => {
+    const filesBtn = row.querySelector('.skill-files-badge')
+    const editBtn = row.querySelector('.admin-skill-actions .secondary:not(.danger)')
+    const deleteBtn = row.querySelector('.admin-skill-actions .danger')
+    if (filesBtn) {
+      filesBtn.onclick = async (e) => {
+        e.stopPropagation()
+        await toggleAdminSkillFiles(skill, row)
+      }
+      row.onclick = async () => toggleAdminSkillFiles(skill, row)
+    }
+    editBtn.onclick = (e) => {
+      e.stopPropagation()
       $('admin-skill-id').value = skill.id
+      $('admin-skill-clawhub-slug').value = ''
+      renderAttachmentPreview([])
       $('admin-skill-icon').value = skill.icon || '🤖'
       $('admin-skill-name').value = skill.name || ''
       $('admin-skill-desc').value = skill.description || ''
@@ -739,7 +816,8 @@ function renderAdminSkillList() {
       $('admin-skill-order').value = skill.sort_order ?? 0
       $('admin-skill-active').checked = Boolean(skill.is_active)
     }
-    deleteBtn.onclick = async () => {
+    deleteBtn.onclick = async (e) => {
+      e.stopPropagation()
       if (!confirm(`删除 Skill「${skill.name}」？`)) return
       try {
         await api(`/api/admin/skills/${skill.id}`, { method: 'DELETE' })
@@ -756,6 +834,7 @@ function renderAdminSkillList() {
 async function loadAdminSkills() {
   const data = await api('/api/admin/skills')
   adminSkills = data.skills || []
+  adminSkillFiles = {}
   renderAdminSkillList()
 }
 
@@ -804,12 +883,14 @@ async function clawHubImport(slug) {
   try {
     const data = await api(`/api/admin/skills/clawhub/preview?slug=${encodeURIComponent(slug)}`)
     $('admin-skill-id').value = ''
+    $('admin-skill-clawhub-slug').value = slug
     $('admin-skill-icon').value = '⚡'
     $('admin-skill-name').value = data.name || slug
     $('admin-skill-desc').value = data.description || ''
     $('admin-skill-prompt').value = data.system_prompt || ''
     $('admin-skill-order').value = '0'
     $('admin-skill-active').checked = true
+    renderAttachmentPreview(data.attachmentFiles || [])
     resultsEl.classList.add('hidden')
     $('admin-skill-form').scrollIntoView({ behavior: 'smooth' })
   } catch (err) {
@@ -865,6 +946,8 @@ refs.adminSkillForm.onsubmit = async (event) => {
     sort_order: Number.parseInt($('admin-skill-order').value, 10) || 0,
     is_active: $('admin-skill-active').checked,
   }
+  const clawhubSlug = $('admin-skill-clawhub-slug').value.trim()
+  if (!id && clawhubSlug) body.clawhub_slug = clawhubSlug
   try {
     await api(id ? `/api/admin/skills/${id}` : '/api/admin/skills', {
       method: id ? 'PATCH' : 'POST',
