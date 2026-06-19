@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt'
 import { randomUUID } from 'crypto'
-import { one, query, withTransaction } from '../db/index.js'
+import { one, query } from '../db/index.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -30,24 +30,15 @@ export default async function authRoutes(app) {
     if (password.length < 8) return reply.code(400).send({ error: 'Password must be at least 8 characters' })
 
     try {
-      const result = await withTransaction(async (client) => {
-        const passwordHash = await bcrypt.hash(password, 12)
-        const adminEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
-        const isAdmin = Boolean(adminEmail && email === adminEmail)
-        const userRes = await client.query(
-          `INSERT INTO users (email, password_hash, display_name, is_admin)
-           VALUES ($1, $2, $3, $4)
-           RETURNING id, email, display_name, is_admin`,
-          [email, passwordHash, displayName, isAdmin],
-        )
-        const user = userRes.rows[0]
-        await client.query(
-          `INSERT INTO providers (user_id, name, base_url, provider_type, is_default)
-           VALUES ($1, $2, $3, $4, true)`,
-          [user.id, 'Local Ollama', process.env.DEFAULT_BASE_URL || 'http://localhost:11434', 'ollama'],
-        )
-        return user
-      })
+      const passwordHash = await bcrypt.hash(password, 12)
+      const adminEmail = String(process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+      const isAdmin = Boolean(adminEmail && email === adminEmail)
+      const result = await one(
+        `INSERT INTO users (email, password_hash, display_name, is_admin)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, email, display_name, is_admin`,
+        [email, passwordHash, displayName, isAdmin],
+      )
       return { token: await createToken(app, result), user: publicUser(result) }
     } catch (err) {
       if (err.code === '23505') return reply.code(409).send({ error: 'Email is already registered' })

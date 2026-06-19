@@ -38,31 +38,6 @@ function publicProvider(row) {
   }
 }
 
-async function loadModels(provider) {
-  const headers = { 'Content-Type': 'application/json' }
-  const apiKey = decryptApiKey(provider.api_key_ciphertext)
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
-  const baseUrl = provider.base_url.replace(/\/+$/, '')
-
-  try {
-    const res = await fetch(`${baseUrl}/v1/models`, { headers })
-    if (res.ok) {
-      const data = await res.json()
-      return (data.data || data.models || []).map((m) => m.id || m.name).filter(Boolean)
-    }
-  } catch {}
-
-  try {
-    const res = await fetch(`${baseUrl}/api/tags`, { headers })
-    if (res.ok) {
-      const data = await res.json()
-      return (data.models || []).map((m) => m.name).filter(Boolean)
-    }
-  } catch {}
-
-  return null
-}
-
 function normalizeProviderInput(body = {}, existing = null) {
   return {
     name: Object.hasOwn(body, 'name') ? String(body.name || '').trim() : existing?.name,
@@ -73,103 +48,16 @@ function normalizeProviderInput(body = {}, existing = null) {
   }
 }
 
-async function getVisibleProvider(providerId, userId) {
-  return one(
-    `SELECT * FROM providers
-     WHERE id = $1 AND (user_id = $2 OR user_id IS NULL OR is_global = true)`,
-    [providerId, userId],
-  )
-}
-
 export default async function providerRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
-  app.get('/', async (request) => {
+  app.get('/', async () => {
     const result = await query(
       `SELECT * FROM providers
-       WHERE user_id IS NULL OR is_global = true OR user_id = $1
-       ORDER BY (user_id IS NULL OR is_global = true) DESC, is_default DESC, created_at ASC`,
-      [request.user.id],
+       WHERE user_id IS NULL OR is_global = true
+       ORDER BY is_default DESC, created_at ASC`,
     )
     return { providers: result.rows.map(publicProvider) }
-  })
-
-  app.post('/', async (request, reply) => {
-    const body = request.body || {}
-    const name = String(body.name || '').trim()
-    const baseUrl = String(body.baseUrl || '').trim()
-    if (!name || !baseUrl) return reply.code(400).send({ error: 'Name and base URL are required' })
-
-    const provider = await withTransaction(async (client) => {
-      if (body.isDefault) await client.query('UPDATE providers SET is_default = false WHERE user_id = $1', [request.user.id])
-      const result = await client.query(
-        `INSERT INTO providers (user_id, name, base_url, api_key_ciphertext, provider_type, default_model, is_default)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING *`,
-        [
-          request.user.id,
-          name,
-          baseUrl,
-          encryptApiKey(String(body.apiKey || '').trim()),
-          body.providerType || 'openai_compatible',
-          body.defaultModel || null,
-          Boolean(body.isDefault),
-        ],
-      )
-      return result.rows[0]
-    })
-    return reply.code(201).send({ provider: publicProvider(provider) })
-  })
-
-  app.patch('/:id', async (request, reply) => {
-    const existing = await one('SELECT * FROM providers WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
-    if (!existing) return reply.code(404).send({ error: 'Provider not found' })
-    const body = request.body || {}
-
-    const provider = await withTransaction(async (client) => {
-      if (body.isDefault) await client.query('UPDATE providers SET is_default = false WHERE user_id = $1', [request.user.id])
-      const apiKeyCiphertext = Object.hasOwn(body, 'apiKey')
-        ? encryptApiKey(String(body.apiKey || '').trim())
-        : existing.api_key_ciphertext
-      const result = await client.query(
-        `UPDATE providers
-         SET name = COALESCE($3, name),
-             base_url = COALESCE($4, base_url),
-             api_key_ciphertext = $5,
-             provider_type = COALESCE($6, provider_type),
-             default_model = $7,
-             is_default = COALESCE($8, is_default),
-             updated_at = now()
-         WHERE id = $1 AND user_id = $2
-         RETURNING *`,
-        [
-          request.params.id,
-          request.user.id,
-          body.name ? String(body.name).trim() : null,
-          body.baseUrl ? String(body.baseUrl).trim() : null,
-          apiKeyCiphertext,
-          body.providerType || null,
-          Object.hasOwn(body, 'defaultModel') ? body.defaultModel || null : existing.default_model,
-          Object.hasOwn(body, 'isDefault') ? Boolean(body.isDefault) : null,
-        ],
-      )
-      return result.rows[0]
-    })
-    return { provider: publicProvider(provider) }
-  })
-
-  app.delete('/:id', async (request, reply) => {
-    const result = await query('DELETE FROM providers WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
-    if (!result.rowCount) return reply.code(404).send({ error: 'Provider not found' })
-    return { ok: true }
-  })
-
-  app.get('/:id/models', async (request, reply) => {
-    const provider = await getVisibleProvider(request.params.id, request.user.id)
-    if (!provider) return reply.code(404).send({ error: 'Provider not found' })
-    const models = await loadModels(provider)
-    if (!models) return reply.code(502).send({ error: 'Cannot reach backend API' })
-    return { models }
   })
 }
 
