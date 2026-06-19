@@ -25,7 +25,7 @@
   .auth-box { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: grid; gap: 16px; }
   .auth-title { color: var(--accent2); font-size: 24px; font-weight: 800; }
   .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border-radius: 8px; padding: 4px; }
-  .tab { border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; }
+  .tab { min-width: 0; border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tab.active { background: var(--accent); color: white; }
   .form { display: grid; gap: 10px; }
   .field { display: grid; gap: 6px; }
@@ -214,9 +214,9 @@
 <div class="modal" id="admin-modal">
   <div class="modal-box wide">
     <div class="modal-title">管理员</div>
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
-      <button class="secondary" id="admin-tab-providers" style="flex:1">供应商</button>
-      <button class="secondary" id="admin-tab-skills" style="flex:1">技能</button>
+    <div class="tabs" style="margin-bottom:12px;">
+      <button class="tab active" id="admin-tab-providers">供应商</button>
+      <button class="tab" id="admin-tab-skills">技能</button>
     </div>
     <div id="admin-pane-providers">
       <div class="admin-provider-list" id="admin-provider-list"></div>
@@ -903,6 +903,10 @@ function setAdminTab(tab) {
   const showSkills = tab === 'skills'
   refs.adminPaneProviders.classList.toggle('hidden', showSkills)
   refs.adminPaneSkills.classList.toggle('hidden', !showSkills)
+  refs.adminTabProviders.classList.remove('secondary')
+  refs.adminTabSkills.classList.remove('secondary')
+  refs.adminTabProviders.classList.add('tab')
+  refs.adminTabSkills.classList.add('tab')
   refs.adminTabProviders.classList.toggle('active', !showSkills)
   refs.adminTabSkills.classList.toggle('active', showSkills)
 }
