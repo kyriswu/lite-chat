@@ -1,4 +1,45 @@
+import { exec } from 'child_process'
 import { one, query } from '../db/index.js'
+
+const CLAWHUB_WORKSPACE = '/root/.openclaw/workspace'
+
+function shellArg(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`
+}
+
+function runClawHubCommand(command) {
+  return new Promise((resolve) => {
+    exec(
+      `cd ${shellArg(CLAWHUB_WORKSPACE)} && ${command} 2>&1`,
+      { timeout: 30000, maxBuffer: 1024 * 1024 },
+      (error, stdout, stderr) => resolve({ error, output: `${stdout || ''}${stderr || ''}` }),
+    )
+  })
+}
+
+function parseClawHubSearchOutput(output) {
+  return output
+    .split('\n')
+    .map((line) => line.trim())
+    .map((line) => line.match(/^(\S+)\s+(.+?)\s+\([^)]+\)\s*$/))
+    .filter(Boolean)
+    .map((match) => ({ slug: match[1], description: match[2].trim() }))
+}
+
+function parseSkillMarkdown(markdown) {
+  const frontmatter = markdown.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/)
+  const meta = { name: '', description: '' }
+  if (frontmatter) {
+    for (const line of frontmatter[1].split('\n')) {
+      const match = line.match(/^([A-Za-z0-9_-]+):\s*(.*)$/)
+      if (!match) continue
+      const key = match[1]
+      const value = match[2].trim().replace(/^["']|["']$/g, '')
+      if (key === 'name' || key === 'description') meta[key] = value
+    }
+  }
+  return meta
+}
 
 function publicSkill(row) {
   return {
@@ -62,6 +103,33 @@ export async function adminSkillRoutes(app) {
   app.get('/', async () => {
     const result = await query('SELECT * FROM skills ORDER BY sort_order ASC, created_at ASC')
     return { skills: result.rows.map(adminSkill) }
+  })
+
+  app.get('/clawhub/search', async (request, reply) => {
+    const q = String(request.query?.q || '').trim()
+    if (!q) return reply.code(400).send({ error: 'Search query is required' })
+
+    const { error, output } = await runClawHubCommand(`npx clawhub search ${shellArg(q)} --limit 10`)
+    if (error) return reply.code(500).send({ error: output.trim() || error.message })
+
+    return { results: parseClawHubSearchOutput(output) }
+  })
+
+  app.get('/clawhub/preview', async (request, reply) => {
+    const slug = String(request.query?.slug || '').trim()
+    if (!slug) return reply.code(400).send({ error: 'Skill slug is required' })
+
+    const { error, output } = await runClawHubCommand(`npx clawhub inspect ${shellArg(slug)} --file SKILL.md`)
+    if (output.includes('Skill not found')) return reply.code(404).send({ error: 'Skill not found' })
+    if (error) return reply.code(500).send({ error: output.trim() || error.message })
+
+    const meta = parseSkillMarkdown(output)
+    return {
+      slug,
+      name: meta.name,
+      description: meta.description,
+      system_prompt: output,
+    }
   })
 
   app.post('/', async (request, reply) => {
