@@ -27,7 +27,12 @@ function parseClawHubSearchOutput(output) {
 }
 
 function parseSkillMarkdown(markdown) {
-  const frontmatter = markdown.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/)
+  // clawhub inspect 输出前会有 "- Fetching skill\n" 等状态行，跳过到 --- 开始
+  // 同时去掉 CRLF（Windows 换行），统一转为 LF
+  const normalized = markdown.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const startIdx = normalized.indexOf('---')
+  const cleaned = startIdx >= 0 ? normalized.slice(startIdx) : normalized
+  const frontmatter = cleaned.match(/^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/)
   const meta = { name: '', description: '' }
   if (frontmatter) {
     for (const line of frontmatter[1].split('\n')) {
