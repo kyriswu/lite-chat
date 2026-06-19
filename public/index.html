@@ -91,8 +91,14 @@
   .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 20; align-items: center; justify-content: center; padding: 16px; }
   .modal.open { display: flex; }
   .modal-box { width: min(520px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: grid; gap: 12px; }
+  .modal-box.wide { width: min(760px, 100%); }
   .modal-title { font-size: 16px; font-weight: 800; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .admin-provider-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
+  .admin-provider-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
+  .admin-provider-name { font-weight: 650; }
+  .admin-provider-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .admin-provider-actions { display: flex; gap: 6px; }
 
   @media (max-width: 720px) {
     #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,.4); }
@@ -137,6 +143,7 @@
       <button class="secondary" id="provider-new-btn">添加 Provider</button>
       <label>模型</label>
       <select id="model-select"><option value="">选择 Provider 后加载</option></select>
+      <button class="secondary hidden" id="admin-btn">管理员</button>
       <button class="secondary" id="logout-btn">退出登录</button>
       <div id="status"></div>
     </div>
@@ -191,6 +198,25 @@
   </form>
 </div>
 
+<div class="modal" id="admin-modal">
+  <div class="modal-box wide">
+    <div class="modal-title">全局 Provider</div>
+    <div class="admin-provider-list" id="admin-provider-list"></div>
+    <form class="form" id="admin-provider-form">
+      <input type="hidden" id="admin-provider-id" />
+      <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
+      <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
+      <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
+      <div class="field"><label>默认模型</label><input class="input" id="admin-provider-default-model" /></div>
+      <div class="modal-actions">
+        <button class="secondary" id="admin-provider-reset" type="button">清空</button>
+        <button class="secondary" id="admin-cancel" type="button">关闭</button>
+        <button class="primary" type="submit">保存全局 Provider</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
 const LS = {
   get: (key, fallback) => { try { const v = localStorage.getItem(key); return v === null ? fallback : JSON.parse(v) } catch { return fallback } },
@@ -216,6 +242,7 @@ let pendingImages = []
 let isStreaming = false
 let authMode = 'login'
 let editingProviderId = null
+let adminProviders = []
 
 const $ = (id) => document.getElementById(id)
 const refs = {
@@ -225,6 +252,8 @@ const refs = {
   send: $('send-btn'), previews: $('image-previews'), providerSelect: $('provider-select'), model: $('model-select'),
   status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
   sysInput: $('sys-prompt-input'), providerModal: $('provider-modal'), providerForm: $('provider-form'),
+  adminBtn: $('admin-btn'), adminModal: $('admin-modal'), adminProviderList: $('admin-provider-list'),
+  adminProviderForm: $('admin-provider-form'),
 }
 
 async function api(path, options = {}) {
@@ -282,6 +311,7 @@ async function enterApp() {
   refs.authScreen.classList.add('hidden')
   refs.app.classList.remove('hidden')
   refs.userLine.textContent = currentUser?.email || ''
+  refs.adminBtn.classList.toggle('hidden', !currentUser?.isAdmin)
   await Promise.all([loadProviders(), loadConversations(), loadSettings()])
   const activeId = LS.get('activeConversationId', null)
   if (activeId && conversations.some((c) => c.id === activeId)) await switchConversation(activeId)
@@ -297,16 +327,18 @@ async function loadProviders() {
   const data = await api('/api/providers')
   providers = data.providers || []
   refs.providerSelect.innerHTML = providers.length
-    ? providers.map((p) => `<option value="${escAttr(p.id)}">${escHtml(p.name)}${p.isDefault ? ' *' : ''}</option>`).join('')
+    ? providers.map((p) => `<option value="${escAttr(p.id)}">${p.isGlobal ? '[全局] ' : ''}${escHtml(p.name)}${p.isDefault ? ' *' : ''}</option>`).join('')
     : '<option value="">没有 Provider</option>'
   const saved = LS.get('activeProviderId', '')
   const selected = providers.find((p) => p.id === saved) || providers.find((p) => p.isDefault) || providers[0]
   if (selected) refs.providerSelect.value = selected.id
+  updateProviderButtons()
   await loadModels()
 }
 
 async function loadModels() {
   const providerId = refs.providerSelect.value
+  updateProviderButtons()
   refs.model.innerHTML = '<option value="">加载中...</option>'
   if (!providerId) {
     refs.model.innerHTML = '<option value="">请先添加 Provider</option>'
@@ -356,7 +388,8 @@ function renderSidebar() {
 }
 
 async function newConversation() {
-  const providerId = refs.providerSelect.value || null
+  const selectedProvider = providers.find((p) => p.id === refs.providerSelect.value)
+  const providerId = selectedProvider?.isGlobal ? null : refs.providerSelect.value || null
   const model = refs.model.value || null
   const data = await api('/api/conversations', {
     method: 'POST',
@@ -535,6 +568,7 @@ function readAsDataURL(file) {
 }
 
 function openProviderModal(provider = null) {
+  if (provider?.isGlobal) return setStatus('全局 Provider 只能由管理员编辑')
   editingProviderId = provider?.id || null
   $('provider-modal-title').textContent = provider ? '编辑 Provider' : '添加 Provider'
   $('provider-name').value = provider?.name || ''
@@ -543,6 +577,11 @@ function openProviderModal(provider = null) {
   $('provider-default-model').value = provider?.defaultModel || ''
   $('provider-is-default').checked = Boolean(provider?.isDefault)
   refs.providerModal.classList.add('open')
+}
+
+function updateProviderButtons() {
+  const provider = providers.find((p) => p.id === refs.providerSelect.value)
+  $('provider-edit-btn').disabled = Boolean(provider?.isGlobal)
 }
 
 refs.providerForm.onsubmit = async (event) => {
@@ -559,6 +598,78 @@ refs.providerForm.onsubmit = async (event) => {
   const method = editingProviderId ? 'PATCH' : 'POST'
   await api(path, { method, body: JSON.stringify(body) })
   refs.providerModal.classList.remove('open')
+  await loadProviders()
+}
+
+function clearAdminProviderForm() {
+  $('admin-provider-id').value = ''
+  $('admin-provider-name').value = ''
+  $('admin-provider-base-url').value = ''
+  $('admin-provider-api-key').value = ''
+  $('admin-provider-default-model').value = ''
+}
+
+function renderAdminProviders() {
+  refs.adminProviderList.innerHTML = adminProviders.length ? '' : '<div id="empty-state">暂无全局 Provider</div>'
+  for (const provider of adminProviders) {
+    const row = document.createElement('div')
+    row.className = 'admin-provider-row'
+    row.innerHTML = `
+      <div>
+        <div class="admin-provider-name">${escHtml(provider.name)}</div>
+        <div class="admin-provider-meta">${escHtml(provider.baseUrl)}${provider.defaultModel ? ' · ' + escHtml(provider.defaultModel) : ''}${provider.hasApiKey ? ' · 已配置 Key' : ''}</div>
+      </div>
+      <div class="admin-provider-actions">
+        <button class="secondary" type="button">编辑</button>
+        <button class="secondary danger" type="button">删除</button>
+      </div>`
+    const [editBtn, deleteBtn] = row.querySelectorAll('button')
+    editBtn.onclick = () => {
+      $('admin-provider-id').value = provider.id
+      $('admin-provider-name').value = provider.name || ''
+      $('admin-provider-base-url').value = provider.baseUrl || ''
+      $('admin-provider-api-key').value = ''
+      $('admin-provider-default-model').value = provider.defaultModel || ''
+    }
+    deleteBtn.onclick = async () => {
+      if (!confirm(`删除全局 Provider「${provider.name}」？`)) return
+      await api(`/api/admin/providers/${provider.id}`, { method: 'DELETE' })
+      await loadAdminProviders()
+      await loadProviders()
+    }
+    refs.adminProviderList.appendChild(row)
+  }
+}
+
+async function loadAdminProviders() {
+  const data = await api('/api/admin/providers')
+  adminProviders = data.providers || []
+  renderAdminProviders()
+}
+
+async function openAdminModal() {
+  if (!currentUser?.isAdmin) return
+  clearAdminProviderForm()
+  refs.adminModal.classList.add('open')
+  await loadAdminProviders()
+}
+
+refs.adminProviderForm.onsubmit = async (event) => {
+  event.preventDefault()
+  const id = $('admin-provider-id').value
+  const body = {
+    name: $('admin-provider-name').value.trim(),
+    baseUrl: $('admin-provider-base-url').value.trim(),
+    defaultModel: $('admin-provider-default-model').value.trim(),
+  }
+  const apiKey = $('admin-provider-api-key').value.trim()
+  if (apiKey || !id) body.apiKey = apiKey
+  await api(id ? `/api/admin/providers/${id}` : '/api/admin/providers', {
+    method: id ? 'PATCH' : 'POST',
+    body: JSON.stringify(body),
+  })
+  clearAdminProviderForm()
+  await loadAdminProviders()
   await loadProviders()
 }
 
@@ -587,8 +698,11 @@ $('new-chat-btn').onclick = newConversation
 $('provider-new-btn').onclick = () => openProviderModal()
 $('provider-edit-btn').onclick = () => openProviderModal(providers.find((p) => p.id === refs.providerSelect.value))
 $('provider-cancel').onclick = () => refs.providerModal.classList.remove('open')
-refs.providerSelect.onchange = loadModels
+refs.providerSelect.onchange = () => { updateProviderButtons(); loadModels() }
 refs.model.onchange = () => LS.set('lastModel', refs.model.value)
+$('admin-btn').onclick = openAdminModal
+$('admin-cancel').onclick = () => refs.adminModal.classList.remove('open')
+$('admin-provider-reset').onclick = clearAdminProviderForm
 $('toggle-sidebar').onclick = () => refs.sidebar.classList.toggle('open')
 $('send-btn').onclick = sendMessage
 refs.input.addEventListener('keydown', (event) => {
@@ -635,7 +749,7 @@ $('clear-btn').onclick = async () => {
   renderMessages([])
   await loadConversations()
 }
-for (const modal of [refs.sysModal, refs.providerModal]) {
+for (const modal of [refs.sysModal, refs.providerModal, refs.adminModal]) {
   modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.remove('open') })
 }
 

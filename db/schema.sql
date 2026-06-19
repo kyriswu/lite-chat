@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   display_name TEXT,
+  is_admin BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_login_at TIMESTAMPTZ
@@ -12,13 +13,14 @@ CREATE TABLE IF NOT EXISTS users (
 
 CREATE TABLE IF NOT EXISTS providers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   base_url TEXT NOT NULL,
   api_key_ciphertext TEXT,
   provider_type TEXT NOT NULL DEFAULT 'openai_compatible',
   default_model TEXT,
   is_default BOOLEAN NOT NULL DEFAULT false,
+  is_global BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   CONSTRAINT providers_name_per_user UNIQUE (user_id, name)
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS providers (
 
 CREATE INDEX IF NOT EXISTS providers_user_id_idx ON providers(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS providers_one_default_per_user_idx ON providers(user_id) WHERE is_default = true;
+CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -66,3 +69,10 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 CREATE INDEX IF NOT EXISTS settings_user_id_idx ON settings(user_id);
+
+-- Backward-compatible migrations for existing installs.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL;
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false;
+UPDATE providers SET is_global = true WHERE user_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true;

@@ -31,6 +31,14 @@ export async function withTransaction(fn) {
   }
 }
 
+export async function runMigrations() {
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false')
+  await query('ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL')
+  await query('ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false')
+  await query('UPDATE providers SET is_global = true WHERE user_id IS NULL')
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true')
+}
+
 export async function closePool() {
   await pool.end()
 }

@@ -67,7 +67,11 @@ export default async function messageRoutes(app) {
     if (!conversation) return
 
     const providerId = body.providerId || conversation.provider_id
-    const provider = await one('SELECT * FROM providers WHERE id = $1 AND user_id = $2', [providerId, request.user.id])
+    const provider = await one(
+      `SELECT * FROM providers
+       WHERE id = $1 AND (user_id = $2 OR user_id IS NULL OR is_global = true)`,
+      [providerId, request.user.id],
+    )
     if (!provider) return reply.code(400).send({ error: 'Provider is required' })
 
     const model = body.model || conversation.model || provider.default_model

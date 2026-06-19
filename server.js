@@ -10,16 +10,18 @@ import { fileURLToPath } from 'url'
 import { pipeline } from 'stream/promises'
 import { randomUUID } from 'crypto'
 import { authenticate } from './middleware/auth.js'
-import { closePool } from './db/index.js'
+import { closePool, runMigrations } from './db/index.js'
 import authRoutes from './routes/auth.js'
 import conversationRoutes from './routes/conversations.js'
 import messageRoutes from './routes/messages.js'
-import providerRoutes from './routes/providers.js'
+import providerRoutes, { adminProviderRoutes } from './routes/providers.js'
 import settingsRoutes from './routes/settings.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const app = Fastify({ logger: false })
+
+await runMigrations()
 
 // ── 插件注册 ────────────────────────────────────────────
 await app.register(fastifyCors, { origin: '*' })
@@ -44,6 +46,7 @@ await app.register(fastifyStatic, {
 
 await app.register(authRoutes, { prefix: '/api/auth' })
 await app.register(providerRoutes, { prefix: '/api/providers' })
+await app.register(adminProviderRoutes, { prefix: '/api/admin/providers' })
 await app.register(conversationRoutes, { prefix: '/api/conversations' })
 await app.register(messageRoutes, { prefix: '/api' })
 await app.register(settingsRoutes, { prefix: '/api/settings' })
