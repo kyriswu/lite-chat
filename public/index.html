@@ -228,7 +228,10 @@
 
 <div class="modal" id="admin-modal">
   <div class="modal-box wide">
-    <div class="modal-title">管理员</div>
+    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;">
+      <span>管理员</span>
+      <button type="button" id="admin-modal-close" title="关闭" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:0 2px;">×</button>
+    </div>
     <div class="tabs" style="margin-bottom:12px;">
       <button class="tab active" id="admin-tab-providers">供应商</button>
       <button class="tab" id="admin-tab-skills">技能</button>
@@ -253,7 +256,6 @@
         </div>
         <div class="modal-actions">
           <button class="secondary" id="admin-provider-reset" type="button">清空</button>
-          <button class="secondary" id="admin-cancel" type="button">关闭</button>
           <button class="primary" type="submit">保存全局 Provider</button>
         </div>
       </form>
@@ -1081,7 +1083,7 @@ $('logout-btn').onclick = async () => {
 $('new-chat-btn').onclick = newConversation
 refs.model.onchange = () => LS.set('lastModel', refs.model.value)
 $('admin-btn').onclick = openAdminModal
-$('admin-cancel').onclick = () => refs.adminModal.classList.remove('open')
+$('admin-modal-close').onclick = () => refs.adminModal.classList.remove('open')
 $('admin-provider-reset').onclick = clearAdminProviderForm
 $('admin-load-models-btn').onclick = loadAdminProviderModels
 $('admin-provider-default-model-select').onchange = function() {
@@ -1161,9 +1163,7 @@ $('clear-btn').onclick = async () => {
   renderMessages([])
   await loadConversations()
 }
-for (const modal of [refs.sysModal, refs.adminModal]) {
-  modal.addEventListener('click', (event) => { if (event.target === modal) modal.classList.remove('open') })
-}
+refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.sysModal) refs.sysModal.classList.remove('open') })
 
 ;(async function init() {
   if (!authToken) return
