@@ -131,6 +131,15 @@
   .clawhub-result-desc { color:var(--text2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .clawhub-import-btn { font-size:11px; padding:3px 8px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; flex-shrink:0; margin-left:8px; }
   .clawhub-import-btn:hover { opacity:0.85; }
+  .model-select-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .model-select-wrapper select.input {
+    flex: 1;
+    min-width: 0;
+  }
 
   @media (max-width: 720px) {
     #sidebar-overlay.show { display: block; }
@@ -231,7 +240,17 @@
         <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
         <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
         <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
-        <div class="field"><label>默认模型</label><input class="input" id="admin-provider-default-model" /></div>
+        <div class="field">
+          <label>默认模型</label>
+          <div class="model-select-wrapper" id="admin-model-select-wrapper">
+            <select class="input" id="admin-provider-default-model-select" style="flex:1;">
+              <option value="">-- 请先点击刷新加载模型 --</option>
+            </select>
+            <button class="secondary" type="button" id="admin-load-models-btn" title="从 Base URL 加载模型列表" style="white-space:nowrap;">⟳ 刷新</button>
+          </div>
+          <input class="input" id="admin-provider-default-model" placeholder="或手动输入模型名称" style="margin-top:6px;" />
+          <div id="admin-model-load-status" style="font-size:12px; color:var(--text2); margin-top:4px; display:none;"></div>
+        </div>
         <div class="modal-actions">
           <button class="secondary" id="admin-provider-reset" type="button">清空</button>
           <button class="secondary" id="admin-cancel" type="button">关闭</button>
@@ -682,6 +701,64 @@ function clearAdminProviderForm() {
   $('admin-provider-default-model').value = ''
 }
 
+async function loadAdminProviderModels() {
+  const providerId = $('admin-provider-id').value.trim()
+  const baseUrl = $('admin-provider-base-url').value.trim()
+  const statusEl = $('admin-model-load-status')
+  const selectEl = $('admin-provider-default-model-select')
+  const inputEl = $('admin-provider-default-model')
+  const btn = $('admin-load-models-btn')
+
+  if (!baseUrl) {
+    statusEl.textContent = '请先填写 Base URL'
+    statusEl.style.display = 'block'
+    return
+  }
+
+  btn.disabled = true
+  btn.textContent = '加载中...'
+  statusEl.textContent = ''
+  statusEl.style.display = 'none'
+
+  try {
+    let models = []
+    if (providerId) {
+      // 已存在的 provider，用后端接口
+      const data = await api(`/api/providers/${providerId}/models`)
+      models = data.models || []
+    } else {
+      // 新 provider，直接调 OpenAI compatible endpoint
+      const apiKey = $('admin-provider-api-key').value.trim()
+      const url = baseUrl.replace(/\/$/, '') + '/models'
+      const headers = { 'Content-Type': 'application/json' }
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+      const resp = await fetch(url, { headers })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const json = await resp.json()
+      models = (json.data || json.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || ''))
+    }
+
+    const currentVal = inputEl.value.trim()
+    selectEl.innerHTML = '<option value="">-- 请选择模型 --</option>'
+      + models.map((m) => `<option value="${escAttr(m)}"${m === currentVal ? ' selected' : ''}>${escHtml(m)}</option>`).join('')
+
+    if (models.length === 0) {
+      statusEl.textContent = '未获取到模型列表'
+      statusEl.style.display = 'block'
+    } else {
+      statusEl.textContent = `✓ 已加载 ${models.length} 个模型`
+      statusEl.style.color = 'var(--text2)'
+      statusEl.style.display = 'block'
+    }
+  } catch (err) {
+    statusEl.textContent = `⚠ 加载失败：${err.message}（可手动输入）`
+    statusEl.style.display = 'block'
+  } finally {
+    btn.disabled = false
+    btn.textContent = '⟳ 刷新'
+  }
+}
+
 function renderAdminProviders() {
   refs.adminProviderList.innerHTML = adminProviders.length ? '' : '<div id="empty-state">暂无全局 Provider</div>'
   for (const provider of adminProviders) {
@@ -703,6 +780,8 @@ function renderAdminProviders() {
       $('admin-provider-base-url').value = provider.baseUrl || ''
       $('admin-provider-api-key').value = ''
       $('admin-provider-default-model').value = provider.defaultModel || ''
+      // 自动加载模型列表
+      setTimeout(loadAdminProviderModels, 100)
     }
     deleteBtn.onclick = async () => {
       if (!confirm(`删除全局 Provider「${provider.name}」？`)) return
@@ -1004,6 +1083,17 @@ refs.model.onchange = () => LS.set('lastModel', refs.model.value)
 $('admin-btn').onclick = openAdminModal
 $('admin-cancel').onclick = () => refs.adminModal.classList.remove('open')
 $('admin-provider-reset').onclick = clearAdminProviderForm
+$('admin-load-models-btn').onclick = loadAdminProviderModels
+$('admin-provider-default-model-select').onchange = function() {
+  if (this.value) $('admin-provider-default-model').value = this.value
+}
+$('admin-provider-default-model').oninput = function() {
+  // 如果手动输入，尝试同步 select
+  const select = $('admin-provider-default-model-select')
+  const opt = [...select.options].find(o => o.value === this.value)
+  if (opt) select.value = this.value
+  else select.value = ''
+}
 refs.adminTabProviders.onclick = () => setAdminTab('providers')
 refs.adminTabSkills.onclick = () => setAdminTab('skills')
 $('admin-skill-reset').onclick = clearAdminSkillForm
