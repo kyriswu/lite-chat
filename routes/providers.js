@@ -126,6 +126,36 @@ export async function adminProviderRoutes(app) {
     return { provider: publicProvider(result.rows[0]) }
   })
 
+  app.get('/:id/models', async (request, reply) => {
+    const existing = await one(
+      'SELECT * FROM providers WHERE id = $1 AND (user_id IS NULL OR is_global = true)',
+      [request.params.id],
+    )
+    if (!existing) return reply.code(404).send({ error: 'Provider not found' })
+
+    const baseUrl = existing.base_url.replace(/\/$/, '')
+    const apiKey = existing.api_key_ciphertext ? decryptApiKey(existing.api_key_ciphertext) : ''
+
+    try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
+      const resp = await fetch(`${baseUrl}/v1/models`, { headers })
+      if (!resp.ok) {
+        // fallback: try without /v1 prefix
+        const resp2 = await fetch(`${baseUrl}/models`, { headers })
+        if (!resp2.ok) return reply.code(resp2.status).send({ error: `Upstream ${resp2.status}` })
+        const json2 = await resp2.json()
+        const models = (json2.data || json2.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || '')).filter(Boolean)
+        return { models }
+      }
+      const json = await resp.json()
+      const models = (json.data || json.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || '')).filter(Boolean)
+      return { models }
+    } catch (err) {
+      return reply.code(502).send({ error: err.message })
+    }
+  })
+
   app.delete('/:id', async (request, reply) => {
     const result = await query(
       'DELETE FROM providers WHERE id = $1 AND (user_id IS NULL OR is_global = true)',
