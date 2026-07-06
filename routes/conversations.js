@@ -64,6 +64,25 @@ export default async function conversationRoutes(app) {
       const provider = await one('SELECT id FROM providers WHERE id = $1 AND user_id = $2', [providerId, request.user.id])
       if (!provider) return reply.code(400).send({ error: 'Provider not found' })
     }
+
+    // Prevent unlimited empty draft conversations: if the newest conversation is
+    // still an untouched default "新对话", reuse it instead of creating another one.
+    const latest = await one(
+      `SELECT c.*,
+              EXISTS (
+                SELECT 1 FROM messages m WHERE m.conversation_id = c.id
+              ) AS has_messages
+       FROM conversations c
+       WHERE c.user_id = $1 AND c.archived_at IS NULL
+       ORDER BY c.updated_at DESC
+       LIMIT 1`,
+      [request.user.id],
+    )
+
+    if (latest && !latest.has_messages && latest.title === '新对话') {
+      return { conversation: publicConversation(latest), reused: true }
+    }
+
     const result = await query(
       `INSERT INTO conversations (user_id, provider_id, title, system_prompt, model)
        VALUES ($1, $2, $3, $4, $5)
