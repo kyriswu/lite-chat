@@ -1,8 +1,9 @@
 import { one, query, withTransaction } from '../db/index.js'
-import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
+import { cacheGetJson, cacheIncr, cacheSetJson } from '../db/cache.js'
 import { chatCompletionsUrl, decryptApiKey, responsesUrl } from './providers.js'
 
 const DEFAULT_CONTEXT_MESSAGE_LIMIT = 20
+const DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET = 12000
 
 function normalizeContent(content) {
   if (Array.isArray(content) || typeof content === 'string') return content
@@ -53,6 +54,47 @@ function buildUpstreamMessages(rows, systemPrompt, fallbackUserContent = null) {
     upstreamMessages.push({ role: 'user', content: fallbackUserContent })
   }
   return upstreamMessages
+}
+
+function buildUpstreamMessagesWithBudget(rows, systemPrompt, fallbackUserContent = null, tokenBudget = DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET) {
+  const budget = Math.max(512, Number.parseInt(tokenBudget, 10) || DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET)
+  const selected = []
+  let usedTokens = 0
+
+  if (systemPrompt) {
+    const systemTokens = estimateContentTokens(systemPrompt)
+    if (systemTokens < budget) {
+      selected.push({ role: 'system', content: systemPrompt })
+      usedTokens += systemTokens
+    }
+  }
+
+  const chatRows = []
+  for (const row of rows) {
+    if (!['system', 'user', 'assistant'].includes(row.role)) continue
+    if (!hasRenderableContent(row.content)) continue
+    chatRows.push({ role: row.role, content: row.content })
+  }
+
+  const pickedFromTail = []
+  for (let index = chatRows.length - 1; index >= 0; index -= 1) {
+    const message = chatRows[index]
+    const tokenCost = estimateContentTokens(message.content)
+    if (usedTokens + tokenCost > budget) {
+      if (pickedFromTail.length) break
+      continue
+    }
+    pickedFromTail.push(message)
+    usedTokens += tokenCost
+  }
+  pickedFromTail.reverse()
+  selected.push(...pickedFromTail)
+
+  const hasChatMessage = selected.some((message) => ['user', 'assistant'].includes(message.role))
+  if (!hasChatMessage && hasRenderableContent(fallbackUserContent)) {
+    selected.push({ role: 'user', content: fallbackUserContent })
+  }
+  return selected
 }
 
 function mergeSystemPrompts(skillPrompt, conversationPrompt) {
@@ -253,6 +295,21 @@ async function getChatContextMessageLimit() {
   const limit = clampContextMessageLimit(row?.value?.contextMessageLimit)
   await cacheSetJson('app_settings:chat_context_limit', { limit }, 300)
   return limit
+}
+
+function clampContextInputTokenBudget(value) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET
+  return Math.min(Math.max(parsed, 512), 128000)
+}
+
+async function getChatContextInputTokenBudget() {
+  const cached = await cacheGetJson('app_settings:chat_context_token_budget')
+  if (cached?.budget) return clampContextInputTokenBudget(cached.budget)
+  const row = await one("SELECT value FROM app_settings WHERE key = 'chat'")
+  const budget = clampContextInputTokenBudget(row?.value?.contextInputTokenBudget)
+  await cacheSetJson('app_settings:chat_context_token_budget', { budget }, 300)
+  return budget
 }
 
 async function getRecentConversationMessages(conversationId, userId, limit) {
@@ -553,8 +610,8 @@ async function streamProviderChat({ request, reply, context, upstreamMessages })
 }
 
 async function clearConversationCaches(userId, conversationId) {
-  await cacheDelPattern(`u:${userId}:conversations:*`)
-  await cacheDelPattern(`u:${userId}:conversation:${conversationId}:*`)
+  void conversationId
+  await cacheIncr(`u:${userId}:conversations:version`, 86400)
 }
 
 export default async function messageRoutes(app) {
@@ -615,7 +672,7 @@ export default async function messageRoutes(app) {
     const context = await resolveChatContext({ body, conversation, userId: request.user.id, reply })
     if (!context) return
 
-    const userContent = normalizeContent(body.message?.content ?? body.content)
+    const userContent = await normalizeContentForUpstream(normalizeContent(body.message?.content ?? body.content), request)
     const userText = Array.isArray(userContent)
       ? userContent.find((part) => part.type === 'text')?.text || '图片消息'
       : String(userContent || '')
@@ -647,12 +704,12 @@ export default async function messageRoutes(app) {
     })
     await clearConversationCaches(request.user.id, conversation.id)
 
-    const contextMessageLimit = await getChatContextMessageLimit()
+    const [contextMessageLimit, contextInputTokenBudget] = await Promise.all([
+      getChatContextMessageLimit(),
+      getChatContextInputTokenBudget(),
+    ])
     const rows = await getRecentConversationMessages(conversation.id, request.user.id, contextMessageLimit)
-    const upstreamMessages = await Promise.all(
-      buildUpstreamMessages(rows, context.systemPrompt, userContent)
-        .map(async (message) => ({ ...message, content: await normalizeContentForUpstream(message.content, request) })),
-    )
+    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget)
 
     const streamResult = await streamProviderChat({ request, reply, context, upstreamMessages })
     if (!streamResult.handled) return reply.code(streamResult.errorStatus).send(streamResult.errorPayload)
@@ -697,7 +754,7 @@ export default async function messageRoutes(app) {
     const context = await resolveChatContext({ body, conversation, userId: request.user.id, reply })
     if (!context) return
 
-    const userContent = normalizeContent(body.message?.content ?? body.content)
+    const userContent = await normalizeContentForUpstream(normalizeContent(body.message?.content ?? body.content), request)
     const userText = Array.isArray(userContent)
       ? userContent.find((part) => part.type === 'text')?.text || '图片消息'
       : String(userContent || '')
@@ -709,12 +766,12 @@ export default async function messageRoutes(app) {
     )
     await clearConversationCaches(request.user.id, conversation.id)
 
-    const contextMessageLimit = await getChatContextMessageLimit()
+    const [contextMessageLimit, contextInputTokenBudget] = await Promise.all([
+      getChatContextMessageLimit(),
+      getChatContextInputTokenBudget(),
+    ])
     const rows = await getRecentConversationMessages(conversation.id, request.user.id, contextMessageLimit)
-    const upstreamMessages = await Promise.all(
-      buildUpstreamMessages(rows, context.systemPrompt, userContent)
-        .map(async (message) => ({ ...message, content: await normalizeContentForUpstream(message.content, request) })),
-    )
+    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget)
 
     const streamResult = await streamProviderChat({ request, reply, context, upstreamMessages })
     if (!streamResult.handled) return reply.code(streamResult.errorStatus).send(streamResult.errorPayload)

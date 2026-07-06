@@ -1,5 +1,5 @@
 import { one, query } from '../db/index.js'
-import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
+import { cacheGetJson, cacheGetNumber, cacheIncr, cacheSetJson } from '../db/cache.js'
 
 function publicConversation(row) {
   return {
@@ -36,12 +36,21 @@ function parsePositiveInt(value, fallback, max = 500) {
   return Math.min(parsed, max)
 }
 
+async function getConversationCacheVersion(userId) {
+  return cacheGetNumber(`u:${userId}:conversations:version`, 0)
+}
+
+async function bumpConversationCacheVersion(userId) {
+  await cacheIncr(`u:${userId}:conversations:version`, 86400)
+}
+
 export default async function conversationRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
   app.get('/', async (request) => {
     const limit = parsePositiveInt(request.query?.limit, null, 200)
-    const cacheKey = `u:${request.user.id}:conversations:limit:${limit || 'all'}`
+    const version = await getConversationCacheVersion(request.user.id)
+    const cacheKey = `u:${request.user.id}:conversations:v:${version}:limit:${limit || 'all'}`
     const cached = await cacheGetJson(cacheKey)
     if (cached) return cached
     const result = await query(
@@ -90,14 +99,15 @@ export default async function conversationRoutes(app) {
        RETURNING *`,
       [request.user.id, providerId, title, body.systemPrompt || null, body.model || null],
     )
-    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
+    await bumpConversationCacheVersion(request.user.id)
     return reply.code(201).send({ conversation: publicConversation(result.rows[0]) })
   })
 
   app.get('/:id', async (request, reply) => {
     const limit = parsePositiveInt(request.query?.limit, null)
     const before = String(request.query?.before || '').trim()
-    const cacheKey = `u:${request.user.id}:conversation:${request.params.id}:limit:${limit || 'all'}:before:${before || 'latest'}`
+    const version = await getConversationCacheVersion(request.user.id)
+    const cacheKey = `u:${request.user.id}:conversation:${request.params.id}:v:${version}:limit:${limit || 'all'}:before:${before || 'latest'}`
     const cached = await cacheGetJson(cacheKey)
     if (cached) return cached
 
@@ -173,16 +183,14 @@ export default async function conversationRoutes(app) {
         body.archived ? new Date() : existing.archived_at,
       ],
     )
-    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
-    await cacheDelPattern(`u:${request.user.id}:conversation:${request.params.id}:*`)
+    await bumpConversationCacheVersion(request.user.id)
     return { conversation: publicConversation(result.rows[0]) }
   })
 
   app.delete('/:id', async (request, reply) => {
     const result = await query('DELETE FROM conversations WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
     if (!result.rowCount) return reply.code(404).send({ error: 'Conversation not found' })
-    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
-    await cacheDelPattern(`u:${request.user.id}:conversation:${request.params.id}:*`)
+    await bumpConversationCacheVersion(request.user.id)
     return { ok: true }
   })
 }

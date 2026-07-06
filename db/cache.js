@@ -88,6 +88,41 @@ export async function cacheSetJson(name, value, ttlSeconds = 30) {
   } catch {}
 }
 
+export async function cacheGetNumber(name, fallback = 0) {
+  const fromMemory = getMemory(name)
+  if (typeof fromMemory === 'number' && Number.isFinite(fromMemory)) return fromMemory
+  try {
+    const redis = await getClient()
+    if (!redis) return fallback
+    const value = await Promise.race([
+      redis.get(key(name)),
+      new Promise((resolve) => setTimeout(() => resolve(null), REDIS_READ_TIMEOUT_MS)),
+    ])
+    if (value === null || value === undefined) return fallback
+    const parsed = Number.parseInt(String(value), 10)
+    if (!Number.isFinite(parsed)) return fallback
+    setMemory(name, parsed, 30)
+    return parsed
+  } catch {
+    return fallback
+  }
+}
+
+export async function cacheIncr(name, ttlSeconds = 86400) {
+  const current = await cacheGetNumber(name, 0)
+  const next = current + 1
+  setMemory(name, next, Math.max(30, Math.min(ttlSeconds, 86400)))
+  try {
+    getClient().then(async (redis) => {
+      if (!redis) return
+      const nextValue = await redis.incr(key(name))
+      if (ttlSeconds > 0) await redis.expire(key(name), ttlSeconds)
+      setMemory(name, nextValue, Math.max(30, Math.min(ttlSeconds, 86400)))
+    }).catch(() => {})
+  } catch {}
+  return next
+}
+
 export async function cacheDel(...names) {
   for (const name of names) memoryCache.delete(name)
   try {
