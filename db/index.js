@@ -71,6 +71,7 @@ export async function runMigrations() {
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER')
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens INTEGER')
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT')
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS finish_reason TEXT')
   await query(`
     CREATE TABLE IF NOT EXISTS skill_files (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

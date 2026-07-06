@@ -282,6 +282,7 @@ function publicMessage(row) {
     promptTokens: row.prompt_tokens,
     completionTokens: row.completion_tokens,
     modelId: row.model_id,
+    finishReason: row.finish_reason,
     error: row.error,
   }
 }
@@ -396,6 +397,7 @@ async function streamChatCompletion({ request, reply, provider, model, headers, 
   let streamError = null
   let responseModel = model
   let usage = null
+  let finishReason = null
 
   try {
     while (true) {
@@ -421,6 +423,8 @@ async function streamChatCompletion({ request, reply, provider, model, headers, 
               totalTokens: Number(chunk.usage.total_tokens) || 0,
             }
           }
+          const chunkFinishReason = chunk?.choices?.[0]?.finish_reason
+          if (chunkFinishReason) finishReason = String(chunkFinishReason)
           assistantContent += chunk.choices?.[0]?.delta?.content || ''
         } catch {}
       }
@@ -432,7 +436,7 @@ async function streamChatCompletion({ request, reply, provider, model, headers, 
     reply.raw.off('close', abortUpstream)
   }
 
-  return { handled: true, assistantContent, streamError, responseModel, usage }
+  return { handled: true, assistantContent, streamError, responseModel, usage, finishReason }
 }
 
 async function streamResponses({ request, reply, provider, model, headers, upstreamMessages }) {
@@ -479,6 +483,7 @@ async function streamResponses({ request, reply, provider, model, headers, upstr
   let streamError = null
   let responseModel = model
   let usage = null
+  let finishReason = null
 
   try {
     while (true) {
@@ -495,6 +500,12 @@ async function streamResponses({ request, reply, provider, model, headers, upstr
           const nextUsage = parseResponsesUsage(payload?.usage || payload?.response?.usage)
           if (nextUsage) usage = nextUsage
           if (payload?.response?.model || payload?.model) responseModel = payload.response?.model || payload.model
+          const responseStatus = String(payload?.response?.status || '').trim()
+          const incompleteReason = payload?.response?.incomplete_details?.reason
+          const stopReason = payload?.response?.stop_reason
+          if (incompleteReason) finishReason = String(incompleteReason)
+          else if (stopReason) finishReason = String(stopReason)
+          else if (type === 'response.completed' && responseStatus) finishReason = responseStatus
           if (type === 'response.output_text.delta' && payload?.delta) {
             const delta = String(payload.delta)
             assistantContent += delta
@@ -517,7 +528,7 @@ async function streamResponses({ request, reply, provider, model, headers, upstr
     reply.raw.off('close', abortUpstream)
   }
 
-  return { handled: true, assistantContent, streamError, responseModel, usage }
+  return { handled: true, assistantContent, streamError, responseModel, usage, finishReason }
 }
 
 async function streamProviderChat({ request, reply, context, upstreamMessages }) {
@@ -651,8 +662,8 @@ export default async function messageRoutes(app) {
       const completionTokens = streamResult.usage?.completionTokens || estimateContentTokens(streamResult.assistantContent)
       const totalTokens = streamResult.usage?.totalTokens || (promptTokens + completionTokens)
       await query(
-        `INSERT INTO messages (conversation_id, user_id, role, content, token_count, prompt_tokens, completion_tokens, model_id, error)
-         VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO messages (conversation_id, user_id, role, content, token_count, prompt_tokens, completion_tokens, model_id, finish_reason, error)
+         VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9)`,
         [
           conversation.id,
           request.user.id,
@@ -661,6 +672,7 @@ export default async function messageRoutes(app) {
           promptTokens,
           completionTokens,
           streamResult.responseModel || context.model,
+          streamResult.finishReason,
           streamResult.streamError,
         ],
       )
@@ -712,8 +724,8 @@ export default async function messageRoutes(app) {
       const completionTokens = streamResult.usage?.completionTokens || estimateContentTokens(streamResult.assistantContent)
       const totalTokens = streamResult.usage?.totalTokens || (promptTokens + completionTokens)
       await query(
-        `INSERT INTO messages (conversation_id, user_id, role, content, token_count, prompt_tokens, completion_tokens, model_id, error)
-         VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8)`,
+        `INSERT INTO messages (conversation_id, user_id, role, content, token_count, prompt_tokens, completion_tokens, model_id, finish_reason, error)
+         VALUES ($1, $2, 'assistant', $3, $4, $5, $6, $7, $8, $9)`,
         [
           conversation.id,
           request.user.id,
@@ -722,6 +734,7 @@ export default async function messageRoutes(app) {
           promptTokens,
           completionTokens,
           streamResult.responseModel || context.model,
+          streamResult.finishReason,
           streamResult.streamError,
         ],
       )

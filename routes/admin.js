@@ -347,7 +347,7 @@ export default async function adminRoutes(app) {
     if (!conversationResult.rowCount) return reply.code(404).send({ error: 'Conversation not found' })
 
     const messagesResult = await query(
-      `SELECT id, role, content, error, token_count, model_id, created_at
+      `SELECT id, role, content, error, token_count, model_id, finish_reason, created_at
        FROM messages
        WHERE conversation_id = $1
        ORDER BY created_at ASC, id ASC`,
@@ -371,6 +371,7 @@ export default async function adminRoutes(app) {
         error: row.error || '',
         tokenCount: Number(row.token_count || 0),
         modelId: row.model_id || '',
+        finishReason: row.finish_reason || '',
         createdAt: row.created_at,
       })),
     }

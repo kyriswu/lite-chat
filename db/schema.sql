@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS messages (
   prompt_tokens INTEGER,
   completion_tokens INTEGER,
   model_id TEXT,
+  finish_reason TEXT,
   error TEXT
 );
 
@@ -67,6 +68,7 @@ CREATE INDEX IF NOT EXISTS messages_conversation_user_created_idx ON messages(co
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens INTEGER;
 ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS finish_reason TEXT;
 
 CREATE TABLE IF NOT EXISTS settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

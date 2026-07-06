@@ -25,6 +25,7 @@ function publicMessage(row) {
     promptTokens: row.prompt_tokens,
     completionTokens: row.completion_tokens,
     modelId: row.model_id,
+    finishReason: row.finish_reason,
     error: row.error,
   }
 }
