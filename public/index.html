@@ -1206,13 +1206,54 @@ function renderSidebar() {
 }
 
 async function newConversation() {
+  saveCurrentConversationScroll()
+  isConversationLoading = false
+  loadingConversationId = null
+  currentConversation = {
+    id: null,
+    title: '新对话',
+    systemPrompt: '',
+    isDraft: true,
+  }
+  messages = []
+  refs.title.textContent = '新对话'
+  LS.del('activeConversationId')
+  setStatus('')
+  renderSidebar()
+  renderMessages([])
+  setComposerDisabled(false)
+  if (window.innerWidth <= 720) closeSidebar()
+}
+
+function isDraftConversation(conversation = currentConversation) {
+  return Boolean(conversation?.isDraft || !conversation?.id)
+}
+
+async function ensureConversationPersisted() {
+  if (!isDraftConversation()) return currentConversation
+  const draftSystemPrompt = String(currentConversation?.systemPrompt || '').trim()
   const data = await api('/api/conversations', {
     method: 'POST',
-    body: JSON.stringify({ title: '新对话' }),
+    body: JSON.stringify({
+      title: '新对话',
+      systemPrompt: draftSystemPrompt || null,
+    }),
   })
-  clearConversationDataCache(data.conversation?.id)
-  await loadConversations()
-  await switchConversation(data.conversation.id)
+  const persisted = {
+    ...data.conversation,
+    isDraft: false,
+  }
+  currentConversation = persisted
+  refs.title.textContent = persisted.title || '新对话'
+  if (persisted.id) LS.set('activeConversationId', persisted.id)
+  clearConversationDataCache(persisted.id)
+  updateConversationDataCache(persisted, messages)
+  if (persisted.id && !conversations.some((conversation) => conversation.id === persisted.id)) {
+    conversations = [persisted, ...conversations]
+  }
+  renderSidebar()
+  loadConversations().catch(() => {})
+  return persisted
 }
 
 async function switchConversation(id) {
@@ -1457,6 +1498,13 @@ async function sendMessage() {
   const providerId = getSelectedProvider()?.id || ''
   if (!providerId) return setStatus('请联系管理员配置全局 Provider')
   if (!currentConversation) await newConversation()
+  if (isDraftConversation()) {
+    try {
+      await ensureConversationPersisted()
+    } catch (err) {
+      return setStatus(err.message || '新对话创建失败，请重试')
+    }
+  }
 
   const sourceConversation = currentConversation
   const sourceConversationId = sourceConversation?.id
@@ -2065,6 +2113,13 @@ $('sys-prompt-btn').onclick = () => {
 $('sys-cancel').onclick = () => refs.sysModal.classList.remove('open')
 $('sys-save').onclick = async () => {
   if (!currentConversation) await newConversation()
+  if (isDraftConversation()) {
+    try {
+      await ensureConversationPersisted()
+    } catch (err) {
+      return setStatus(err.message || '新对话创建失败，请重试')
+    }
+  }
   const systemPrompt = refs.sysInput.value.trim()
   const data = await api(`/api/conversations/${currentConversation.id}`, {
     method: 'PATCH',
