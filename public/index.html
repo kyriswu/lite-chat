@@ -268,22 +268,42 @@
   .chat-empty-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
   .chat-empty-quick-label { color: var(--text2); font-size: 12px; align-self: center; }
   .chat-empty-quick-btn { border-radius: 999px; padding: 7px 12px; font-size: 12px; }
-  .msg-row { max-width: 860px; margin: 0 auto 16px; padding: 0 22px; display: flex; flex-direction: column; }
-  .msg-row.user { align-items: flex-end; }
-  .msg-row.assistant { align-items: flex-start; }
-  .msg-head { display: flex; align-items: center; gap: 8px; margin: 0 6px 5px; flex-wrap: wrap; }
-  .msg-row.user .msg-head { flex-direction: row-reverse; }
+  .msg-row {
+    max-width: min(96vw, 1220px);
+    margin: 0 auto 18px;
+    padding: 0 22px;
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+  }
+  .msg-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: .02em;
+    box-shadow: 0 8px 16px -12px rgba(15,23,42,.45);
+    user-select: none;
+  }
+  .msg-avatar.user { background: linear-gradient(135deg, #4f46e5, #2563eb); }
+  .msg-avatar.assistant { background: linear-gradient(135deg, #0f172a, #334155); }
+  .msg-main { min-width: 0; display: grid; gap: 4px; }
+  .msg-head { display: flex; align-items: center; gap: 8px; margin: 0 4px 2px; flex-wrap: wrap; }
   .msg-label { font-size: 11px; color: var(--text2); font-weight: 600; }
   .msg-meta { font-size: 11px; color: var(--text2); opacity: .92; }
-  .msg-actions { display: flex; gap: 4px; margin: 6px 7px 0; opacity: 0; transition: opacity .15s; }
-  .msg-row.user .msg-actions { align-self: flex-end; }
-  .msg-row.assistant .msg-actions { align-self: flex-start; }
+  .msg-actions { display: flex; gap: 4px; margin: 6px 4px 0; opacity: 0; transition: opacity .15s; align-self: flex-start; }
   .msg-row:hover .msg-actions, .msg-row.editing .msg-actions { opacity: 1; }
   .msg-action { border: 0; background: transparent; color: var(--text2); border-radius: 8px; padding: 4px 7px; font-size: 12px; line-height: 1; min-width: 28px; min-height: 28px; display: inline-flex; align-items: center; justify-content: center; }
   .msg-action:hover { background: var(--surface2); color: var(--accent2); }
-  .bubble { max-width: min(88%, 760px); padding: 20px 30px; border-radius: 20px; line-height: 1.7; font-size: 15px; word-break: break-word; overflow-wrap: anywhere; box-shadow: var(--shadow-bubble); overflow: hidden; }
-  .user .bubble { background: linear-gradient(135deg, #eef1fb 0%, #e7ecfb 100%); border: 1px solid #d8def1; border-bottom-right-radius: 7px; color: #1c2340; box-shadow: var(--shadow-bubble); }
-  .assistant .bubble { background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(247,248,252,.98) 100%); border: 1px solid #dfe5f0; border-bottom-left-radius: 7px; box-shadow: var(--shadow-card); }
+  .bubble { max-width: min(85%, 980px); padding: 18px 24px; border-radius: 16px; line-height: 1.72; font-size: 15px; word-break: break-word; overflow-wrap: anywhere; box-shadow: var(--shadow-bubble); overflow: hidden; }
+  .user .bubble { background: linear-gradient(180deg, #eef2ff 0%, #e8edff 100%); border: 1px solid #d7def8; color: #1e2b55; box-shadow: var(--shadow-bubble); }
+  .assistant .bubble { background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(247,248,252,.98) 100%); border: 1px solid #dfe5f0; box-shadow: var(--shadow-card); }
   .bubble img { max-width: 100%; max-height: 320px; display: block; border-radius: 10px; margin: 10px 0; }
   .bubble p { margin: 0 0 .75em; }
   .bubble p:last-child { margin-bottom: 0; }
@@ -355,7 +375,9 @@
     #sidebar.collapsed { width: var(--sidebar-w); min-width: var(--sidebar-w); }
     #sidebar.open { transform: translateX(0); }
     #close-sidebar { display: inline-flex; }
-    .bubble { max-width: 96%; }
+    .msg-row { grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 0 12px; margin-bottom: 14px; }
+    .msg-avatar { width: 30px; height: 30px; font-size: 11px; }
+    .bubble { max-width: 96%; padding: 16px 16px; }
     #topbar { padding: 0 10px; }
     .chat-empty-shell { width: min(96vw, 640px); gap: 14px; }
     .chat-empty-import {
@@ -1225,11 +1247,29 @@ function renderPendingAssistantBubble() {
   return '<span style="color:var(--text2);font-style:italic">思考中</span><span class="cursor"></span>'
 }
 
+function getUserAvatarText() {
+  const base = String(currentUser?.displayName || currentUser?.email || 'U').trim()
+  if (!base) return 'U'
+  return base[0].toUpperCase()
+}
+
+function createMessageAvatar(role) {
+  const avatar = document.createElement('div')
+  avatar.className = `msg-avatar ${role === 'user' ? 'user' : 'assistant'}`
+  avatar.textContent = role === 'user' ? getUserAvatarText() : 'LC'
+  return avatar
+}
+
 function createMessageElement(msg) {
   const row = document.createElement('div')
   row.className = `msg-row ${msg.role}`
   if (editingMessageId && msg.id === editingMessageId) row.classList.add('editing')
   if (msg.id) row.dataset.messageId = msg.id
+
+  const avatar = createMessageAvatar(msg.role)
+  const main = document.createElement('div')
+  main.className = 'msg-main'
+
   const head = document.createElement('div')
   head.className = 'msg-head'
   const label = document.createElement('div')
@@ -1254,7 +1294,7 @@ function createMessageElement(msg) {
         ? renderPendingAssistantBubble()
         : renderMarkdown(msg.content)
   }
-  row.append(head, bubble)
+  main.append(head, bubble)
   const actions = document.createElement('div')
   actions.className = 'msg-actions'
   const copy = document.createElement('button')
@@ -1273,7 +1313,8 @@ function createMessageElement(msg) {
     edit.onclick = () => startEditMessage(msg.id)
     actions.appendChild(edit)
   }
-  row.appendChild(actions)
+  main.appendChild(actions)
+  row.append(avatar, main)
   return row
 }
 
