@@ -855,7 +855,7 @@ function extractSupportedProblemUrl(text) {
     /https?:\/\/(?:www\.)?luogu\.com\.cn\/problem\/[A-Za-z0-9_-]+/i,
     /https?:\/\/(?:www\.)?codeforces\.com\/problemset\/problem\/\d+\/[A-Za-z0-9]+/i,
     /https?:\/\/(?:www\.)?codeforces\.com\/contest\/\d+\/problem\/[A-Za-z0-9]+/i,
-    /https?:\/\/(?:www\.)?dmoj\.ca\/problem\/[A-Za-z0-9._-]+/i,
+    /https?:\/\/(?:www\.)?judge\.yosupo\.jp\/problem\/[A-Za-z0-9._-]+/i,
   ]
   for (const pattern of patterns) {
     const match = source.match(pattern)
@@ -877,15 +877,15 @@ function renderChatEmptyState() {
       <div class="chat-empty-shell">
         <div class="chat-empty-copy">
           <div class="chat-empty-title">开始全新对话，或直接导入题目</div>
-          <div class="chat-empty-subtitle">粘贴洛谷/Codeforces/DMOJ 链接后可一键解析题面并填充到输入框</div>
+          <div class="chat-empty-subtitle">粘贴洛谷/Codeforces/Library Checker 链接后可一键解析题面并填充到输入框</div>
         </div>
         <div class="chat-empty-import">
-          <div class="chat-empty-prefix">🔗 Luogu / Codeforces / DMOJ</div>
+          <div class="chat-empty-prefix">🔗 Luogu / Codeforces / Library Checker</div>
           <input
             id="empty-luogu-url"
             class="chat-empty-url"
             type="url"
-            placeholder="粘贴题目链接 (如: https://www.luogu.com.cn/problem/P1003 / https://codeforces.com/problemset/problem/2050/C / https://dmoj.ca/problem/aac3p1)..."
+            placeholder="粘贴题目链接 (如: https://www.luogu.com.cn/problem/P1003 / https://codeforces.com/problemset/problem/2050/C / https://judge.yosupo.jp/problem/dirichlet_inverse_and_prefix_sums)..."
           />
           <button id="empty-luogu-import-btn" class="primary chat-empty-import-btn" type="button">导入</button>
         </div>
