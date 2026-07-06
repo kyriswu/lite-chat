@@ -100,8 +100,9 @@
   #conversation-list:hover::-webkit-scrollbar-thumb { background: rgba(79,70,184,.3); }
   #conversation-list::-webkit-scrollbar-thumb:active { background: rgba(79,70,184,.4); }
   .conversation { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 12px 10px; border-radius: 12px; color: var(--text2); cursor: pointer; transform: translateY(0); transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), transform var(--motion-fast) var(--motion-ease); }
-  .conversation:hover { background: #eef4ff; color: #2b3a57; box-shadow: 0 6px 14px -12px rgba(35,86,190,.35); transform: translateY(-1px); }
+  .conversation:not(.active):hover { background: #eef4ff; color: #2b3a57; box-shadow: 0 6px 14px -12px rgba(35,86,190,.35); transform: translateY(-1px); }
   .conversation.active { background: linear-gradient(180deg, #e8f1ff 0%, #e3eeff 100%); color: #1d2f56; box-shadow: inset 0 0 0 1px rgba(47,111,236,.34), 0 10px 24px -18px rgba(35,86,190,.55); }
+  .conversation.active:hover { transform: none; box-shadow: inset 0 0 0 1px rgba(47,111,236,.34), 0 10px 24px -18px rgba(35,86,190,.55); }
   .conversation.loading { color: var(--accent2); cursor: progress; }
   .conversation-main { min-width: 0; display: flex; align-items: center; gap: 6px; }
   .conversation-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14.5px; line-height: 1.3; color: inherit; }
