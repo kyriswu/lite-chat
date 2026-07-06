@@ -55,6 +55,20 @@ function buildUpstreamMessages(rows, systemPrompt, fallbackUserContent = null) {
   return upstreamMessages
 }
 
+function mergeSystemPrompts(skillPrompt, conversationPrompt) {
+  const skillText = String(skillPrompt || '').trim()
+  const conversationText = String(conversationPrompt || '').trim()
+  if (!skillText) return conversationText
+  if (!conversationText) return skillText
+  return [
+    'Skill instructions:',
+    skillText,
+    '',
+    'Conversation-specific instructions:',
+    conversationText,
+  ].join('\n')
+}
+
 function getRequestBaseUrl(request) {
   const forwardedProto = request.headers['x-forwarded-proto']
   const protocol = String(
@@ -319,10 +333,10 @@ async function resolveChatContext({ body, conversation, userId, reply }) {
     return null
   }
 
-  let systemPrompt = conversation.system_prompt
+  let systemPrompt = String(conversation.system_prompt || '').trim()
   if (body.skillId) {
     const skill = await one('SELECT system_prompt FROM skills WHERE id = $1 AND is_active = true', [body.skillId])
-    if (skill?.system_prompt) systemPrompt = skill.system_prompt
+    if (skill?.system_prompt) systemPrompt = mergeSystemPrompts(skill.system_prompt, systemPrompt)
   }
 
   const headers = { 'Content-Type': 'application/json' }
