@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>/</loc>
+    <loc>https://oi.devtool.uk/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>/code-review.html</loc>
+    <loc>https://oi.devtool.uk/code-review.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>/admin.html</loc>
+    <loc>https://oi.devtool.uk/admin.html</loc>
     <changefreq>weekly</changefreq>
     <priority>0.3</priority>
   </url>
