@@ -14,6 +14,8 @@ let adminDashboard = null
 let adminSettings = null
 let adminConversationDetails = {}
 let expandedConversationId = ''
+let trendChartInstance = null
+let modelUsageChartInstance = null
 
 const $ = (id) => document.getElementById(id)
 const refs = {
@@ -83,6 +85,39 @@ function formatTokens(value) {
   return String(num)
 }
 
+function metricDelta(currentRaw, previousRaw) {
+  const current = Math.max(0, Number(currentRaw || 0))
+  const previous = Math.max(0, Number(previousRaw || 0))
+  if (!current && !previous) return { text: '暂无变化', cls: 'neutral' }
+  if (!previous) return { text: '+100.0% ↑', cls: 'up' }
+  const delta = ((current - previous) / previous) * 100
+  if (Math.abs(delta) < 0.05) return { text: '0.0% →', cls: 'neutral' }
+  const up = delta > 0
+  return {
+    text: `${up ? '+' : ''}${delta.toFixed(1)}% ${up ? '↑' : '↓'}`,
+    cls: up ? 'up' : 'down',
+  }
+}
+
+function hashString(text) {
+  let hash = 0
+  const source = String(text || '')
+  for (let i = 0; i < source.length; i += 1) {
+    hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0
+  }
+  return Math.abs(hash)
+}
+
+function avatarFromText(text) {
+  const source = String(text || '').trim() || 'U'
+  const initial = source[0].toUpperCase()
+  const seed = hashString(source)
+  const hueA = seed % 360
+  const hueB = (hueA + 42) % 360
+  const style = `background: linear-gradient(135deg, hsl(${hueA}, 72%, 54%), hsl(${hueB}, 72%, 45%));`
+  return `<span class="avatar" style="${style}">${escHtml(initial)}</span>`
+}
+
 function empty(text) {
   return `<div class="empty-state">${escHtml(text)}</div>`
 }
@@ -112,33 +147,49 @@ function showError(err) {
 
 function renderAdminDashboard() {
   const totals = adminDashboard?.totals || {}
+  const totalTokens = Number(totals.total_tokens || 0)
+  const tokens24h = Number(totals.tokens_24h || 0)
+  const totalConversations = Number(totals.conversations || 0)
+  const conversations24h = Number(totals.conversations_24h || 0)
+  const totalUsers = Number(totals.users || 0)
+  const activeUsers = Number(totals.active_users_7d || 0)
+  const totalMessages = Number(totals.messages || 0)
+  const messages24h = Number(totals.messages_24h || 0)
+
   const stats = [
-    ['用户', totals.users || 0],
-    ['管理员', totals.admins || 0],
-    ['对话', totals.conversations || 0],
-    ['消息', totals.messages || 0],
-    ['24h 对话', totals.conversations_24h || 0],
-    ['24h 消息', totals.messages_24h || 0],
-    ['总 Token', formatTokens(totals.total_tokens || 0)],
-    ['24h Token', formatTokens(totals.tokens_24h || 0)],
-    ['活跃用户', totals.active_users_7d || 0],
-    ['平均轮数', totals.avg_messages_per_conversation || 0],
-    ['平均回复 Token', totals.avg_tokens_per_assistant_message || 0],
-    ['模型数', totals.models_used || 0],
+    { label: '总 Token', value: formatTokens(totalTokens), size: 'lg', delta: metricDelta(tokens24h, Math.max(totalTokens - tokens24h, 0)) },
+    { label: '对话数', value: formatNumber(totalConversations), size: 'lg', delta: metricDelta(conversations24h, Math.max(totalConversations - conversations24h, 0)) },
+    { label: '用户数', value: formatNumber(totalUsers), size: 'lg', delta: metricDelta(activeUsers, Math.max(totalUsers - activeUsers, 0)) },
+    { label: '24h Token', value: formatTokens(tokens24h), size: 'sm', delta: metricDelta(tokens24h, totalTokens || 1) },
+    { label: '24h 对话', value: formatNumber(conversations24h), size: 'sm', delta: metricDelta(conversations24h, totalConversations || 1) },
+    { label: '24h 消息', value: formatNumber(messages24h), size: 'sm', delta: metricDelta(messages24h, totalMessages || 1) },
+    { label: '消息总数', value: formatNumber(totalMessages), size: 'sm', delta: metricDelta(messages24h, Math.max(totalMessages - messages24h, 0)) },
+    { label: '管理员', value: formatNumber(totals.admins || 0), size: 'sm', delta: { text: '角色结构', cls: 'neutral' } },
+    { label: '活跃用户(7d)', value: formatNumber(activeUsers), size: 'sm', delta: metricDelta(activeUsers, Math.max(totalUsers - activeUsers, 0)) },
+    { label: '平均轮数', value: formatNumber(totals.avg_messages_per_conversation || 0), size: 'sm', delta: { text: '质量指标', cls: 'neutral' } },
+    { label: '平均回复 Token', value: formatNumber(totals.avg_tokens_per_assistant_message || 0), size: 'sm', delta: { text: '质量指标', cls: 'neutral' } },
+    { label: '模型数', value: formatNumber(totals.models_used || 0), size: 'sm', delta: { text: '覆盖范围', cls: 'neutral' } },
   ]
-  refs.stats.innerHTML = stats.map(([label, value]) => `
-    <div class="stat-card">
-      <div class="stat-value">${escHtml(value)}</div>
-      <div class="stat-label">${escHtml(label)}</div>
+
+  refs.stats.innerHTML = stats.map((item) => `
+    <div class="stat-card ${item.size === 'lg' ? 'is-lg' : ''}">
+      <div class="stat-head">
+        <div class="stat-label">${escHtml(item.label)}</div>
+        <div class="stat-delta ${escAttr(item.delta.cls)}">${escHtml(item.delta.text)}</div>
+      </div>
+      <div class="stat-value">${escHtml(item.value)}</div>
     </div>
   `).join('')
 
   refs.recentUsers.innerHTML = adminDashboard?.recentUsers?.length
     ? adminDashboard.recentUsers.map((user) => `
-        <div class="data-row">
-          <div>
-            <div class="row-title">${escHtml(user.email)}${user.isAdmin ? ' · 管理员' : ''}</div>
-            <div class="row-meta">${escHtml(user.displayName || '未设置显示名')} · ${user.conversationCount} 对话 · ${user.messageCount} 消息 · 最近登录 ${escHtml(formatDateTime(user.lastLoginAt))}</div>
+        <div class="data-row rich-row">
+          <div class="row-main">
+            ${avatarFromText(user.email || user.displayName || 'U')}
+            <div>
+              <div class="row-title">${escHtml(user.email)}${user.isAdmin ? ' · 管理员' : ''}</div>
+              <div class="row-meta">${escHtml(user.displayName || '未设置显示名')} · ${user.conversationCount} 对话 · ${user.messageCount} 消息 · 最近登录 ${escHtml(formatDateTime(user.lastLoginAt))}</div>
+            </div>
           </div>
         </div>
       `).join('')
@@ -146,13 +197,16 @@ function renderAdminDashboard() {
 
   refs.recentConversations.innerHTML = adminDashboard?.recentConversations?.length
     ? adminDashboard.recentConversations.map((conversation) => `
-        <div class="data-row expandable" data-conversation-id="${escAttr(conversation.id)}">
-          <div>
-            <div class="row-title">${escHtml(conversation.title || '新对话')}</div>
-            <div class="row-meta">${escHtml(conversation.email)} · ${conversation.messageCount} 消息 · 更新于 ${escHtml(formatDateTime(conversation.updatedAt))}</div>
+        <div class="data-row rich-row expandable" data-conversation-id="${escAttr(conversation.id)}">
+          <div class="row-main">
+            ${avatarFromText(conversation.email || 'C')}
+            <div>
+              <div class="row-title">${escHtml(conversation.title || '新对话')}</div>
+              <div class="row-meta">${escHtml(conversation.email)} · ${conversation.messageCount} 消息 · 更新于 ${escHtml(formatDateTime(conversation.updatedAt))}</div>
+            </div>
           </div>
           <div class="row-actions">
-            <button class="secondary toggle-conversation-detail" type="button">${expandedConversationId === conversation.id ? '收起' : '展开'}</button>
+            <button class="secondary row-action-fade toggle-conversation-detail" type="button">${expandedConversationId === conversation.id ? '收起' : '展开'}</button>
           </div>
         </div>
       `).join('')
@@ -160,7 +214,14 @@ function renderAdminDashboard() {
 
   for (const row of refs.recentConversations.querySelectorAll('.data-row[data-conversation-id]')) {
     const conversationId = row.dataset.conversationId
-    row.querySelector('.toggle-conversation-detail').onclick = () => toggleRecentConversationDetail(conversationId, row).catch(showError)
+    const toggleBtn = row.querySelector('.toggle-conversation-detail')
+    if (toggleBtn) {
+      toggleBtn.onclick = (event) => {
+        event.stopPropagation()
+        toggleRecentConversationDetail(conversationId, row).catch(showError)
+      }
+    }
+    row.onclick = () => toggleRecentConversationDetail(conversationId, row).catch(showError)
     if (expandedConversationId === conversationId) {
       renderConversationDetail(row, adminConversationDetails[conversationId] || null, true)
     }
@@ -175,59 +236,149 @@ function renderAdminDashboard() {
 
 function renderTrendChart(items) {
   if (!items.length) {
+    if (trendChartInstance) {
+      trendChartInstance.destroy()
+      trendChartInstance = null
+    }
     refs.trendChart.innerHTML = empty('暂无趋势数据')
     return
   }
-  const maxMessages = Math.max(...items.map((item) => Number(item.messages || 0)), 1)
-  const maxTokens = Math.max(...items.map((item) => Number(item.tokens || 0)), 1)
-  refs.trendChart.innerHTML = `
-    <div class="mini-trend-list">
-      <div class="chart-legend">
-        <span class="legend-item"><span class="legend-swatch"></span>消息数</span>
-        <span class="legend-item"><span class="legend-swatch warn"></span>Token 消耗</span>
-      </div>
-      ${items.map((item) => `
-        <div class="trend-row">
-          <div class="trend-head">
-            <div class="trend-label">${escHtml(item.day)}</div>
-            <div class="trend-meta">${formatNumber(item.messages)} 消息 · ${formatTokens(item.tokens)} tokens · ${formatNumber(item.conversations)} 对话</div>
-          </div>
-          <div class="bar-track"><div class="bar-fill" style="width:${Math.max(6, Math.round(Number(item.messages || 0) / maxMessages * 100))}%"></div></div>
-          <div class="bar-track"><div class="bar-fill warn" style="width:${Math.max(6, Math.round(Number(item.tokens || 0) / maxTokens * 100))}%"></div></div>
-        </div>
-      `).join('')}
-    </div>
-  `
+  if (!window.ApexCharts) {
+    refs.trendChart.innerHTML = empty('图表库未加载')
+    return
+  }
+  if (trendChartInstance) trendChartInstance.destroy()
+
+  refs.trendChart.innerHTML = ''
+  const categories = items.map((item) => item.day)
+  const tokensSeries = items.map((item) => Number(item.tokens || 0))
+  const messagesSeries = items.map((item) => Number(item.messages || 0))
+  const conversationsSeries = items.map((item) => Number(item.conversations || 0))
+
+  trendChartInstance = new ApexCharts(refs.trendChart, {
+    chart: {
+      type: 'area',
+      height: 300,
+      toolbar: { show: false },
+      animations: { easing: 'easeinout', speed: 450 },
+      fontFamily: 'Segoe UI, PingFang SC, Microsoft YaHei, sans-serif',
+    },
+    series: [
+      { name: 'Token', type: 'area', data: tokensSeries },
+      { name: '消息', type: 'column', data: messagesSeries },
+      { name: '对话', type: 'line', data: conversationsSeries },
+    ],
+    colors: ['#4f46e5', '#2563eb', '#0ea5e9'],
+    stroke: { width: [2.5, 0, 2], curve: 'smooth' },
+    fill: {
+      type: ['gradient', 'solid', 'solid'],
+      gradient: {
+        shadeIntensity: 0.4,
+        opacityFrom: 0.34,
+        opacityTo: 0.02,
+        stops: [0, 100],
+      },
+    },
+    xaxis: {
+      categories,
+      axisTicks: { show: false },
+      axisBorder: { show: false },
+      labels: { style: { colors: '#64748b' } },
+    },
+    yaxis: [
+      {
+        seriesName: 'Token',
+        labels: { formatter: (v) => formatTokens(v), style: { colors: '#64748b' } },
+      },
+      {
+        opposite: true,
+        seriesName: '消息',
+        labels: { formatter: (v) => formatNumber(Math.round(v)), style: { colors: '#64748b' } },
+      },
+    ],
+    grid: { borderColor: '#e2e8f0', strokeDashArray: 4 },
+    legend: { position: 'top', horizontalAlign: 'left' },
+    dataLabels: { enabled: false },
+    tooltip: {
+      shared: true,
+      intersect: false,
+      y: {
+        formatter: (v, ctx) => (
+          ctx.seriesIndex === 0 ? `${formatTokens(v)} tokens` : `${formatNumber(Math.round(v))}`
+        ),
+      },
+    },
+  })
+  trendChartInstance.render()
 }
 
 function renderModelUsage(items) {
   if (!items.length) {
+    if (modelUsageChartInstance) {
+      modelUsageChartInstance.destroy()
+      modelUsageChartInstance = null
+    }
     refs.modelUsage.innerHTML = empty('暂无模型数据')
     return
   }
-  const max = Math.max(...items.map((item) => Number(item.messageCount || 0)), 1)
-  refs.modelUsage.innerHTML = `
-    <div class="mini-model-list">
-      ${items.slice(0, 6).map((item) => `
-        <div class="model-row">
-          <div class="model-head">
-            <div class="model-label">${escHtml(item.modelId || '未记录模型')}</div>
-            <div class="model-meta">${formatNumber(item.messageCount)} 次 · ${formatTokens(item.totalTokens)} tokens</div>
-          </div>
-          <div class="bar-track"><div class="bar-fill alt" style="width:${Math.max(8, Math.round(Number(item.messageCount || 0) / max * 100))}%"></div></div>
-        </div>
-      `).join('')}
-    </div>
-  `
+  if (!window.ApexCharts) {
+    refs.modelUsage.innerHTML = empty('图表库未加载')
+    return
+  }
+  if (modelUsageChartInstance) modelUsageChartInstance.destroy()
+
+  const top = items.slice(0, 6)
+  const labels = top.map((item) => item.modelId || '未记录模型')
+  const values = top.map((item) => Number(item.messageCount || 0))
+  const totalCalls = values.reduce((sum, current) => sum + current, 0)
+  refs.modelUsage.innerHTML = ''
+
+  modelUsageChartInstance = new ApexCharts(refs.modelUsage, {
+    chart: {
+      type: 'donut',
+      height: 300,
+      fontFamily: 'Segoe UI, PingFang SC, Microsoft YaHei, sans-serif',
+    },
+    labels,
+    series: values,
+    colors: ['#2563eb', '#4f46e5', '#0ea5e9', '#14b8a6', '#f59e0b', '#f97316'],
+    dataLabels: { enabled: false },
+    legend: {
+      position: 'bottom',
+      formatter: (seriesName, opts) => `${seriesName} · ${formatNumber(opts.w.globals.series[opts.seriesIndex])}`,
+    },
+    plotOptions: {
+      pie: {
+        donut: {
+          size: '66%',
+          labels: {
+            show: true,
+            name: { show: true, color: '#64748b' },
+            value: { show: true, color: '#1e293b', fontWeight: 800 },
+            total: {
+              show: true,
+              label: '总请求',
+              formatter: () => formatNumber(totalCalls),
+            },
+          },
+        },
+      },
+    },
+    tooltip: { y: { formatter: (v) => `${formatNumber(v)} 次调用` } },
+  })
+  modelUsageChartInstance.render()
 }
 
 function renderTopUsers(items) {
   refs.topUsers.innerHTML = items.length
     ? items.map((item, index) => `
-        <div class="data-row">
-          <div>
-            <div class="row-title">#${escHtml(index + 1)} ${escHtml(item.email)}</div>
-            <div class="row-meta">${formatNumber(item.messageCount)} 消息 · ${formatTokens(item.totalTokens)} tokens · ${formatNumber(item.conversationCount)} 对话</div>
+        <div class="data-row rich-row">
+          <div class="row-main">
+            ${avatarFromText(item.email || String(index + 1))}
+            <div>
+              <div class="row-title">#${escHtml(index + 1)} ${escHtml(item.email)}</div>
+              <div class="row-meta">${formatNumber(item.messageCount)} 消息 · ${formatTokens(item.totalTokens)} tokens · ${formatNumber(item.conversationCount)} 对话</div>
+            </div>
           </div>
         </div>
       `).join('')
@@ -237,10 +388,13 @@ function renderTopUsers(items) {
 function renderTopConversations(items) {
   refs.topConversations.innerHTML = items.length
     ? items.map((item) => `
-        <div class="data-row">
-          <div>
-            <div class="row-title">${escHtml(item.title || '新对话')}</div>
-            <div class="row-meta">${escHtml(item.email)} · ${formatNumber(item.messageCount)} 消息 · ${formatTokens(item.totalTokens)} tokens</div>
+        <div class="data-row rich-row">
+          <div class="row-main">
+            ${avatarFromText(item.email || 'C')}
+            <div>
+              <div class="row-title">${escHtml(item.title || '新对话')}</div>
+              <div class="row-meta">${escHtml(item.email)} · ${formatNumber(item.messageCount)} 消息 · ${formatTokens(item.totalTokens)} tokens</div>
+            </div>
           </div>
         </div>
       `).join('')
