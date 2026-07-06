@@ -17,6 +17,8 @@
     --shadow-bubble: 0 14px 34px rgba(15,23,42,.07);
     --sidebar-w: 280px;
     --sidebar-collapsed-w: 80px;
+    --chat-stream-max: 1120px;
+    --chat-compose-max: 980px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
@@ -268,15 +270,11 @@
   .chat-empty-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
   .chat-empty-quick-label { color: var(--text2); font-size: 12px; align-self: center; }
   .chat-empty-quick-btn { border-radius: 999px; padding: 7px 12px; font-size: 12px; }
-  .msg-row {
-    max-width: min(96vw, 1220px);
-    margin: 0 auto 18px;
-    padding: 0 22px;
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr);
-    gap: 10px;
-    align-items: start;
-  }
+  .msg-row { max-width: min(96vw, var(--chat-stream-max)); margin: 0 auto 18px; padding: 0 22px; display: flex; flex-direction: column; }
+  .msg-row.assistant { align-items: flex-start; }
+  .msg-row.user { align-items: flex-end; }
+  .msg-body { display: flex; align-items: flex-start; gap: 10px; max-width: 100%; }
+  .msg-row.user .msg-body { flex-direction: row-reverse; }
   .msg-avatar {
     width: 34px;
     height: 34px;
@@ -293,17 +291,20 @@
   }
   .msg-avatar.user { background: linear-gradient(135deg, #4f46e5, #2563eb); }
   .msg-avatar.assistant { background: linear-gradient(135deg, #0f172a, #334155); }
-  .msg-main { min-width: 0; display: grid; gap: 4px; }
+  .msg-main { min-width: 0; display: grid; gap: 4px; justify-items: flex-start; }
+  .msg-row.user .msg-main { justify-items: flex-end; }
   .msg-head { display: flex; align-items: center; gap: 8px; margin: 0 4px 2px; flex-wrap: wrap; }
+  .msg-row.user .msg-head { justify-content: flex-end; }
   .msg-label { font-size: 11px; color: var(--text2); font-weight: 600; }
   .msg-meta { font-size: 11px; color: var(--text2); opacity: .92; }
   .msg-actions { display: flex; gap: 4px; margin: 6px 4px 0; opacity: 0; transition: opacity .15s; align-self: flex-start; }
+  .msg-row.user .msg-actions { align-self: flex-end; }
   .msg-row:hover .msg-actions, .msg-row.editing .msg-actions { opacity: 1; }
   .msg-action { border: 0; background: transparent; color: var(--text2); border-radius: 8px; padding: 4px 7px; font-size: 12px; line-height: 1; min-width: 28px; min-height: 28px; display: inline-flex; align-items: center; justify-content: center; }
   .msg-action:hover { background: var(--surface2); color: var(--accent2); }
-  .bubble { max-width: min(85%, 980px); padding: 18px 24px; border-radius: 16px; line-height: 1.72; font-size: 15px; word-break: break-word; overflow-wrap: anywhere; box-shadow: var(--shadow-bubble); overflow: hidden; }
-  .user .bubble { background: linear-gradient(180deg, #eef2ff 0%, #e8edff 100%); border: 1px solid #d7def8; color: #1e2b55; box-shadow: var(--shadow-bubble); }
-  .assistant .bubble { background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(247,248,252,.98) 100%); border: 1px solid #dfe5f0; box-shadow: var(--shadow-card); }
+  .bubble { max-width: min(84vw, 900px); padding: 18px 24px; border-radius: 16px; line-height: 1.72; font-size: 15px; word-break: break-word; overflow-wrap: anywhere; box-shadow: var(--shadow-bubble); overflow: hidden; }
+  .user .bubble { background: linear-gradient(180deg, #eef2ff 0%, #e8edff 100%); border: 1px solid #d7def8; color: #1e2b55; box-shadow: var(--shadow-bubble); border-bottom-right-radius: 7px; }
+  .assistant .bubble { background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(247,248,252,.98) 100%); border: 1px solid #dfe5f0; box-shadow: var(--shadow-card); border-bottom-left-radius: 7px; }
   .bubble img { max-width: 100%; max-height: 320px; display: block; border-radius: 10px; margin: 10px 0; }
   .bubble p { margin: 0 0 .75em; }
   .bubble p:last-child { margin-bottom: 0; }
@@ -339,7 +340,7 @@
   @keyframes blink { 50% { opacity: 0; } }
 
   #input-bar { border-top: 1px solid var(--line-soft); padding: 14px 16px 18px; }
-  #input-wrap { max-width: 820px; margin: 0 auto; background: rgba(255,255,255,.96); border: 1px solid #dbe1ec; border-radius: 16px; display: flex; flex-direction: column; transition: opacity .15s, border-color .15s, box-shadow .15s; box-shadow: var(--shadow-card); }
+  #input-wrap { max-width: min(96vw, var(--chat-compose-max)); margin: 0 auto; background: rgba(255,255,255,.96); border: 1px solid #dbe1ec; border-radius: 16px; display: flex; flex-direction: column; transition: opacity .15s, border-color .15s, box-shadow .15s; box-shadow: var(--shadow-card); }
   #input-wrap.disabled { opacity: .62; border-color: var(--surface3); }
   #input-wrap:focus-within { border-color: #cdd6ec; box-shadow: 0 18px 44px rgba(15,23,42,.08); }
   #msg-input { background: transparent; border: 0; color: var(--text); resize: none; padding: 14px 16px 6px; min-height: 56px; max-height: 200px; outline: none; }
@@ -375,9 +376,10 @@
     #sidebar.collapsed { width: var(--sidebar-w); min-width: var(--sidebar-w); }
     #sidebar.open { transform: translateX(0); }
     #close-sidebar { display: inline-flex; }
-    .msg-row { grid-template-columns: 30px minmax(0, 1fr); gap: 8px; padding: 0 12px; margin-bottom: 14px; }
+    .msg-row { padding: 0 12px; margin-bottom: 14px; }
+    .msg-body { gap: 8px; }
     .msg-avatar { width: 30px; height: 30px; font-size: 11px; }
-    .bubble { max-width: 96%; padding: 16px 16px; }
+    .bubble { max-width: min(96vw, 92%); padding: 16px 16px; }
     #topbar { padding: 0 10px; }
     .chat-empty-shell { width: min(96vw, 640px); gap: 14px; }
     .chat-empty-import {
@@ -1266,6 +1268,8 @@ function createMessageElement(msg) {
   if (editingMessageId && msg.id === editingMessageId) row.classList.add('editing')
   if (msg.id) row.dataset.messageId = msg.id
 
+  const body = document.createElement('div')
+  body.className = 'msg-body'
   const avatar = createMessageAvatar(msg.role)
   const main = document.createElement('div')
   main.className = 'msg-main'
@@ -1314,7 +1318,8 @@ function createMessageElement(msg) {
     actions.appendChild(edit)
   }
   main.appendChild(actions)
-  row.append(avatar, main)
+  body.append(avatar, main)
+  row.append(body)
   return row
 }
 
