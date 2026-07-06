@@ -1,5 +1,5 @@
 {
-  "name": "lite-chat",
+  "name": "algorithm-assistant",
   "version": "1.0.0",
   "description": "Lightweight chat UI with Fastify backend",
   "type": "module",

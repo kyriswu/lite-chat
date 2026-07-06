@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Lite Chat</title>
+<title>算法助手</title>
 <link rel="stylesheet" href="/vendor/prism/themes/prism.css" />
 <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
 <script>window.Prism = window.Prism || {}; window.Prism.manual = true;</script>
@@ -414,13 +414,13 @@
 <section id="boot-screen">
   <div class="boot-box">
     <div class="boot-mark"><div class="boot-spinner"></div></div>
-    <div class="boot-text">正在进入 Lite Chat</div>
+    <div class="boot-text">正在进入 算法助手</div>
   </div>
 </section>
 
 <section id="auth-screen" class="hidden">
   <div class="auth-box">
-    <div class="auth-title">Lite Chat</div>
+    <div class="auth-title">算法助手</div>
     <div class="tabs">
       <button class="tab active" id="login-tab">登录</button>
       <button class="tab" id="register-tab">注册</button>
@@ -441,7 +441,7 @@
     <div class="sidebar-header">
       <div class="sidebar-brand">
         <div class="sidebar-brand-mark">LC</div>
-        <span class="sidebar-title">Lite Chat</span>
+        <span class="sidebar-title">算法助手</span>
       </div>
       <div class="sidebar-header-actions">
         <button class="icon-btn" id="close-sidebar" title="关闭">✕</button>
@@ -555,6 +555,7 @@ function renderLatexInMarkdown(text) {
   html = renderBlockLatex(html, /\\\[([\s\S]+?)\\\]/g, '\\[', '\\]')
   html = renderInlineLatex(html, /\\\(([\s\S]+?)\\\)/g, '\\(', '\\)')
   html = renderDollarInlineLatex(html)
+  html = renderBareLatex(html)
 
   html = html.replace(/\uE000(\d+)\uE001/g, (_, index) => protectedParts[Number(index)] || '')
   return { html, fallback }
@@ -583,6 +584,17 @@ function renderDollarInlineLatex(value) {
   })
 }
 
+function renderBareLatex(value) {
+  const pattern = /\\(?:max|min|sum|prod|frac|sqrt|left|right|text|cdot|times|leq?|geq?|neq|infty|alpha|beta|gamma|lambda|theta|pi|dots|ldots)\b[^\n。；;!?]*/g
+  return value.replace(pattern, (match) => {
+    const candidate = String(match || '').trim()
+    if (!candidate) return match
+    if (/[\u4e00-\u9fff]/.test(candidate)) return match
+    const rendered = renderLatexFormula(candidate, { displayMode: false })
+    return rendered || match
+  })
+}
+
 function looksLikeLatex(value) {
   const text = String(value || '').trim()
   if (!text) return false
@@ -591,7 +603,7 @@ function looksLikeLatex(value) {
 }
 
 function renderLatexFormula(formula, options = {}) {
-  const tex = String(formula || '').trim()
+  const tex = sanitizeLatexFormula(formula)
   if (!tex) return ''
   try {
     const rendered = katex.renderToString(tex, {
@@ -601,12 +613,30 @@ function renderLatexFormula(formula, options = {}) {
       trust: false,
       output: 'html',
     })
+    if (rendered.includes('katex-error')) return ''
     return options.displayMode
       ? `<div class="math-block">${rendered}</div>`
       : `<span class="math-inline">${rendered}</span>`
   } catch {
     return ''
   }
+}
+
+function sanitizeLatexFormula(formula) {
+  const raw = String(formula || '').trim()
+  if (!raw) return ''
+  return raw.replace(/\\text\{([^}]*)\}/g, (_, content) => `\\text{${escapeLatexTextContent(content)}}`)
+}
+
+function escapeLatexTextContent(value) {
+  const text = String(value || '')
+  let out = ''
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i]
+    if (ch === '_' && text[i - 1] !== '\\') out += '\\_'
+    else out += ch
+  }
+  return out
 }
 
 function loadScript(src) {

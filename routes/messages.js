@@ -113,7 +113,7 @@ async function normalizeImageUrlForUpstream(url, request) {
 
   if (/^https?:\/\//i.test(rawUrl)) {
     const response = await fetch(rawUrl, {
-      headers: { 'user-agent': 'Lite Chat Image Fetcher' },
+      headers: { 'user-agent': 'Algorithm Assistant Image Fetcher' },
     })
     if (!response.ok) {
       throw new Error(`图片抓取失败: ${response.status}`)
@@ -131,7 +131,7 @@ async function normalizeImageUrlForUpstream(url, request) {
     try {
       const resolvedUrl = new URL(rawUrl, baseUrl).toString()
       const response = await fetch(resolvedUrl, {
-        headers: { 'user-agent': 'Lite Chat Image Fetcher' },
+        headers: { 'user-agent': 'Algorithm Assistant Image Fetcher' },
       })
       if (!response.ok) {
         throw new Error(`图片抓取失败: ${response.status}`)

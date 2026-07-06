@@ -1,4 +1,4 @@
-# Lite Chat
+# 算法助手
 
 一个轻量、可自部署的多用户聊天系统，前端为原生页面，后端基于 Fastify，数据存储使用 PostgreSQL，并可选使用 Redis 做缓存加速。
 
@@ -186,7 +186,7 @@ pm2 startup
 
 ```ini
 [Unit]
-Description=Lite Chat Service
+Description=算法助手 Service
 After=network.target
 
 [Service]

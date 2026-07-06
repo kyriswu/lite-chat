@@ -64,7 +64,7 @@ await app.register(codeReviewRoutes, { prefix: '/api/code-review' })
 const PORT = process.env.PORT || 3131
 try {
   await app.listen({ port: PORT, host: '0.0.0.0' })
-  console.log(`✅  lite-chat running at http://0.0.0.0:${PORT}`)
+  console.log(`✅  算法助手 running at http://0.0.0.0:${PORT}`)
 } catch (err) {
   console.error(err)
   process.exit(1)

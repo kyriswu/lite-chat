@@ -63,7 +63,7 @@ async function fetchTextWithTimeout(url, timeoutMs = 15000) {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'user-agent': 'Mozilla/5.0 (Lite Chat Code Review Importer)',
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
         accept: 'text/html,application/xhtml+xml',
       },
     })
