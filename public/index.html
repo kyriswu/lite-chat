@@ -3,7 +3,80 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>算法助手</title>
+<title>ICPC/NOI 编程竞赛助手 - OI 学习与解题训练平台</title>
+<meta name="description" content="面向 ICPC、NOI、NOIP、OI 学习者的编程竞赛助手。支持洛谷、Codeforces、Library Checker 题目导入，提供题意理解、思路分析、代码优化与训练辅助。" />
+<meta name="keywords" content="ICPC,NOI,NOIP,OI,算法竞赛,编程竞赛助手,竞赛学习辅助,洛谷,Codeforces,Library Checker" />
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1" />
+<meta name="theme-color" content="#2f6fec" />
+<link rel="canonical" href="/" />
+<link rel="alternate" hreflang="zh-CN" href="/" />
+<meta property="og:type" content="website" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:site_name" content="算法助手" />
+<meta property="og:title" content="ICPC/NOI 编程竞赛助手 - OI 学习与解题训练平台" />
+<meta property="og:description" content="面向 ICPC、NOI、NOIP、OI 的学习辅助工具，支持题目导入、思路分析、代码优化与竞赛训练。" />
+<meta property="og:url" content="/" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="ICPC/NOI 编程竞赛助手 - OI 学习与解题训练平台" />
+<meta name="twitter:description" content="题目导入、智能对话、代码分析与训练建议，服务 ICPC/NOI/OI 学习者。" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "ICPC/NOI 编程竞赛助手",
+  "url": "/",
+  "inLanguage": "zh-CN",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "/?q={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "ICPC/NOI 编程竞赛助手",
+  "applicationCategory": "EducationalApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "zh-CN",
+  "description": "面向 ICPC、NOI、NOIP、OI 的编程竞赛学习辅助平台，支持题目导入、思路分析与代码优化。",
+  "url": "/"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "这个平台适合 ICPC、NOI、NOIP 学习者吗？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "适合。平台面向 ICPC、NOI、NOIP、OI 训练场景，支持题意拆解、思路讨论、复杂度分析与代码优化建议。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "支持哪些题目来源？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "当前支持洛谷、Codeforces、Library Checker 的题目链接导入，便于快速开始训练与讨论。"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "未登录可以做什么？",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "未登录可导入题目并预览内容；发送消息时会弹出登录框，登录后可自动开启全新对话继续训练。"
+      }
+    }
+  ]
+}
+</script>
 <link rel="stylesheet" href="/vendor/prism/themes/prism.css" />
 <link rel="stylesheet" href="/vendor/katex/katex.min.css" />
 <script>window.Prism = window.Prism || {}; window.Prism.manual = true;</script>
@@ -390,6 +463,68 @@
   .chat-empty-copy { text-align: center; display: grid; gap: 6px; }
   .chat-empty-title { color: #151b28; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
   .chat-empty-subtitle { color: var(--text2); font-size: 14px; }
+  .chat-empty-title.seo-h1 { margin: 0; }
+  .chat-empty-subtitle.seo-h2 { margin: 0; font-weight: 500; }
+  .chat-empty-points {
+    margin: 4px auto 0;
+    width: min(720px, 95%);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    list-style: none;
+    padding: 0;
+  }
+  .chat-empty-point {
+    text-align: left;
+    border: 1px solid #d6e0f0;
+    background: rgba(255,255,255,.8);
+    border-radius: 11px;
+    padding: 10px 11px;
+    box-shadow: 0 8px 20px -18px rgba(30,58,112,.45);
+  }
+  .chat-empty-point-title {
+    color: #203357;
+    font-size: 12px;
+    font-weight: 750;
+    margin-bottom: 4px;
+  }
+  .chat-empty-point-desc {
+    color: #627798;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .chat-empty-faq {
+    margin: 2px auto 0;
+    width: min(760px, 96%);
+    display: grid;
+    gap: 8px;
+  }
+  .chat-empty-faq-title {
+    margin: 0;
+    text-align: center;
+    color: #284171;
+    font-size: 14px;
+    font-weight: 760;
+    letter-spacing: .01em;
+  }
+  .chat-empty-faq-item {
+    background: rgba(255,255,255,.82);
+    border: 1px solid #d4dff0;
+    border-radius: 10px;
+    padding: 9px 11px;
+  }
+  .chat-empty-faq-q {
+    margin: 0 0 4px;
+    color: #203357;
+    font-size: 12px;
+    font-weight: 730;
+  }
+  .chat-empty-faq-a {
+    margin: 0;
+    color: #627798;
+    font-size: 12px;
+    line-height: 1.5;
+  }
   .chat-empty-import {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
@@ -579,6 +714,8 @@
     .chat-empty-url { grid-area: input; font-size: 13px; }
     .chat-empty-import-btn { grid-area: button; padding: 9px 12px; }
     .chat-empty-title { font-size: 18px; }
+    .chat-empty-points { grid-template-columns: 1fr; gap: 8px; width: min(96vw, 560px); }
+    .chat-empty-faq { width: min(96vw, 560px); }
   }
 </style>
 <script>
@@ -1071,7 +1208,7 @@ async function executePendingAction() {
   refs.input.value = String(action.inputValue || '')
   refs.input.style.height = 'auto'
   refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
-  await sendMessage()
+  await sendMessage({ forceNewConversation: true })
 }
 
 async function enterGuestApp() {
@@ -1124,8 +1261,22 @@ function renderChatEmptyState() {
     <div id="empty-state">
       <div class="chat-empty-shell">
         <div class="chat-empty-copy">
-          <div class="chat-empty-title">开始全新对话，或直接导入题目</div>
-          <div class="chat-empty-subtitle">粘贴洛谷/Codeforces/Library Checker 链接后可一键解析题面并填充到输入框</div>
+          <h1 class="chat-empty-title seo-h1">ICPC / NOI / OI 编程竞赛学习助手</h1>
+          <h2 class="chat-empty-subtitle seo-h2">支持洛谷、Codeforces、Library Checker 题目导入，一键开始题意理解、解法分析与代码优化训练</h2>
+          <ul class="chat-empty-points" aria-label="竞赛学习能力亮点">
+            <li class="chat-empty-point">
+              <div class="chat-empty-point-title">题目导入与拆解</div>
+              <div class="chat-empty-point-desc">粘贴竞赛题链接后自动抽取题面，快速进入关键信息与约束分析。</div>
+            </li>
+            <li class="chat-empty-point">
+              <div class="chat-empty-point-title">解法推导与复杂度评估</div>
+              <div class="chat-empty-point-desc">面向 ICPC/NOI 训练，支持从思路到复杂度的分步讨论与策略对比。</div>
+            </li>
+            <li class="chat-empty-point">
+              <div class="chat-empty-point-title">代码审查与优化建议</div>
+              <div class="chat-empty-point-desc">结合常见竞赛失误模式，给出边界检查、性能优化与实现细节建议。</div>
+            </li>
+          </ul>
         </div>
         <div class="chat-empty-import">
           <div class="chat-empty-prefix">🔗 Luogu / Codeforces / Library Checker</div>
@@ -1143,6 +1294,21 @@ function renderChatEmptyState() {
           <button class="secondary chat-empty-quick-btn" type="button" data-luogu-pid="P1003">P1003</button>
           <button class="secondary chat-empty-quick-btn" type="button" data-luogu-pid="P1211">P1211</button>
         </div>
+        <section class="chat-empty-faq" aria-label="竞赛学习常见问题">
+          <h3 class="chat-empty-faq-title">竞赛学习 FAQ</h3>
+          <article class="chat-empty-faq-item">
+            <p class="chat-empty-faq-q">Q: 这个平台适合 ICPC、NOI、NOIP 学习者吗？</p>
+            <p class="chat-empty-faq-a">A: 适合，覆盖题意理解、解法推导、复杂度评估与代码优化，适用于日常训练与赛前复盘。</p>
+          </article>
+          <article class="chat-empty-faq-item">
+            <p class="chat-empty-faq-q">Q: 支持哪些在线评测题目来源？</p>
+            <p class="chat-empty-faq-a">A: 当前支持洛谷、Codeforces、Library Checker 题目链接导入，导入后可直接开始分析与对话。</p>
+          </article>
+          <article class="chat-empty-faq-item">
+            <p class="chat-empty-faq-q">Q: 未登录可以直接使用吗？</p>
+            <p class="chat-empty-faq-a">A: 未登录可先导入并预览题面，发送消息时会弹出登录框，登录后会自动开启全新对话继续。</p>
+          </article>
+        </section>
       </div>
     </div>
   `
@@ -1746,7 +1912,8 @@ function applyMessageScroll(mode, conversationId, previousTop = refs.messages.sc
   refs.messages.scrollTo({ top: refs.messages.scrollHeight, behavior: 'auto' })
 }
 
-async function sendMessage() {
+async function sendMessage(options = {}) {
+  const { forceNewConversation = false } = options || {}
   if (isConversationLoading || streamingConversationIds.has(currentConversation?.id)) return
   const text = refs.input.value.trim()
   const content = buildMessageContentFromMarkdown(refs.input.value)
@@ -1758,6 +1925,11 @@ async function sendMessage() {
   }
   const providerId = getSelectedProvider()?.id || ''
   if (!providerId) return setStatus('请联系管理员配置全局 Provider')
+  if (forceNewConversation) {
+    saveCurrentConversationScroll()
+    currentConversation = null
+    LS.del('activeConversationId')
+  }
   if (!currentConversation) await newConversation()
   if (isDraftConversation()) {
     try {

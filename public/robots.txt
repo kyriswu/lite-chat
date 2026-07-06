@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+
+# Update this URL to your production domain if needed.
+Sitemap: /sitemap.xml
