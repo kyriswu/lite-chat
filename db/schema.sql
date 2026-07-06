@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS providers (
   base_url TEXT NOT NULL,
   api_key_ciphertext TEXT,
   provider_type TEXT NOT NULL DEFAULT 'openai_compatible',
+  api_format TEXT NOT NULL DEFAULT 'openai_chat_completions',
   default_model TEXT,
   is_default BOOLEAN NOT NULL DEFAULT false,
   is_global BOOLEAN NOT NULL DEFAULT false,
@@ -43,6 +44,8 @@ CREATE TABLE IF NOT EXISTS conversations (
 );
 
 CREATE INDEX IF NOT EXISTS conversations_user_id_updated_at_idx ON conversations(user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS conversations_id_user_id_idx ON conversations(id, user_id);
+CREATE INDEX IF NOT EXISTS conversations_active_user_updated_idx ON conversations(user_id, updated_at DESC) WHERE archived_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -52,11 +55,18 @@ CREATE TABLE IF NOT EXISTS messages (
   content JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   token_count INTEGER,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  model_id TEXT,
   error TEXT
 );
 
 CREATE INDEX IF NOT EXISTS messages_conversation_created_at_idx ON messages(conversation_id, created_at ASC);
 CREATE INDEX IF NOT EXISTS messages_user_id_idx ON messages(user_id);
+CREATE INDEX IF NOT EXISTS messages_conversation_user_created_idx ON messages(conversation_id, user_id, created_at ASC);
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens INTEGER;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT;
 
 CREATE TABLE IF NOT EXISTS settings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -70,10 +80,18 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS settings_user_id_idx ON settings(user_id);
 
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Backward-compatible migrations for existing installs.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS api_format TEXT NOT NULL DEFAULT 'openai_chat_completions';
 UPDATE providers SET is_global = true WHERE user_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true;
 
@@ -85,9 +103,11 @@ CREATE TABLE IF NOT EXISTS skills (
   system_prompt TEXT NOT NULL,
   icon TEXT DEFAULT '🤖',
   is_active BOOLEAN NOT NULL DEFAULT true,
+  is_default BOOLEAN NOT NULL DEFAULT false,
   sort_order INTEGER NOT NULL DEFAULT 0,
   created_by UUID REFERENCES users(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS skills_sort_idx ON skills(sort_order ASC, created_at ASC);
+CREATE UNIQUE INDEX IF NOT EXISTS skills_one_default_idx ON skills(is_default) WHERE is_default = true;

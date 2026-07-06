@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lite Chat Code Review</title>
+<link rel="stylesheet" href="/code-review.css" />
+</head>
+<body>
+<div id="review-app">
+  <header id="review-topbar">
+    <div class="topbar-brand">
+      <div class="brand-mark" aria-hidden="true">🔎</div>
+      <div class="brand-copy">
+        <div class="brand-row">
+          <h1>C++ Code Reviewer</h1>
+          <span class="version-pill">Lite Chat</span>
+        </div>
+        <p id="review-subtitle">面向算法竞赛的本地审查工作台。先做规则检查，再按需执行深度诊断。</p>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <a class="secondary link-btn" href="/">返回聊天</a>
+      <button class="secondary" id="logout-btn">退出登录</button>
+    </div>
+  </header>
+
+  <main id="review-main">
+    <section class="panel input-panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-kicker">输入区</div>
+          <h2>题目与代码</h2>
+        </div>
+        <div id="review-user-line"></div>
+      </div>
+      <div class="workspace-strip">
+        <div class="workspace-chip">题目约束提取</div>
+        <div class="workspace-chip">静态规则扫描</div>
+        <div class="workspace-chip">Sanitizer / TLE / MLE</div>
+      </div>
+      <form id="review-form">
+        <div class="field-grid compact-grid">
+          <div class="field">
+            <label for="cpp-standard">C++ 版本</label>
+            <select id="cpp-standard" class="input">
+              <option value="c++14" selected>C++14</option>
+              <option value="c++17">C++17</option>
+              <option value="c++20">C++20</option>
+            </select>
+          </div>
+          <div class="hint-card">
+            <div class="hint-title">输入建议</div>
+            <div class="hint-copy">支持导入洛谷题目链接，也支持继续直接粘贴原题全文。</div>
+          </div>
+        </div>
+
+        <section class="editor-card">
+          <div class="editor-head">
+            <label for="problem-url">洛谷题目链接</label>
+            <span class="editor-meta">支持 `https://www.luogu.com.cn/problem/P1214`</span>
+          </div>
+          <div class="url-import-row">
+            <input id="problem-url" class="input" type="url" placeholder="粘贴洛谷题目链接后点击导入，或直接粘贴到下方题目框自动识别" />
+            <button class="secondary" id="import-problem-btn" type="button">导入题目</button>
+          </div>
+        </section>
+
+        <section class="editor-card">
+          <div class="editor-head">
+            <label for="problem-text">题目要求</label>
+            <span class="editor-meta">自动提取复杂度线索，支持粘贴洛谷题目链接自动导入</span>
+          </div>
+          <textarea id="problem-text" class="input editor-textarea problem-input" rows="10" placeholder="示例：时间复杂度 O(n log n)，空间复杂度 O(1)，n ≤ 1e5。也可以直接粘贴题目全文。"></textarea>
+        </section>
+
+        <section class="editor-card code-card">
+          <div class="editor-head">
+            <label for="code-text">C++ 代码</label>
+            <span class="editor-meta">支持单文件审查</span>
+          </div>
+          <textarea id="code-text" class="input editor-textarea code-input" rows="20" placeholder="#include <bits/stdc++.h>
+using namespace std;
+
+int main() {
+  return 0;
+}"></textarea>
+          <div class="editor-footer">
+            <span>建议保留完整 `main` 与核心函数，便于 TLE / UB / 边界诊断。</span>
+          </div>
+        </section>
+
+        <div class="review-toolbar">
+          <div id="review-status"></div>
+          <div class="form-actions">
+            <button class="secondary" id="fill-demo-btn" type="button">填充示例</button>
+            <button class="secondary" id="static-review-btn" type="button">静态审查</button>
+            <button class="primary" id="deep-review-btn" type="button">开始审查</button>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <section class="panel result-panel">
+      <div class="panel-head">
+        <div>
+          <div class="panel-kicker">结果区</div>
+          <h2>审查结果</h2>
+        </div>
+        <div id="review-badge" class="hidden"></div>
+      </div>
+      <div class="risk-chip-row" aria-hidden="true">
+        <div class="risk-chip risk-tle">TLE</div>
+        <div class="risk-chip risk-mle">MLE</div>
+        <div class="risk-chip risk-ub">内存泄漏</div>
+        <div class="risk-chip risk-uninit">未初始化</div>
+        <div class="risk-chip risk-overflow">越界</div>
+        <div class="risk-chip risk-wa">样例不符</div>
+      </div>
+      <div id="review-empty">
+        <div class="empty-illustration">📋</div>
+        <div class="empty-title">等待审查结果</div>
+        <div class="empty-copy">点击左侧按钮开始检查，右侧会展示约束解析、风险总览、静态问题和深度诊断输出。</div>
+      </div>
+      <div id="review-result" class="hidden">
+        <section class="result-section">
+          <h3>题面解析</h3>
+          <div id="review-meta" class="meta-grid"></div>
+        </section>
+        <section class="result-section">
+          <h3>总览</h3>
+          <div id="review-summary" class="summary-grid"></div>
+        </section>
+        <section class="result-section">
+          <h3>静态审查</h3>
+          <div id="review-static-findings" class="finding-list"></div>
+        </section>
+        <section class="result-section hidden" id="deep-review-section">
+          <h3>深度检查</h3>
+          <div id="review-deep-findings" class="finding-list"></div>
+          <div class="log-grid">
+            <div>
+              <h4>编译输出</h4>
+              <pre id="compile-output" class="log-box"></pre>
+            </div>
+            <div>
+              <h4>运行输出</h4>
+              <pre id="runtime-output" class="log-box"></pre>
+            </div>
+            <div>
+              <h4>运行诊断</h4>
+              <pre id="runtime-meta" class="log-box"></pre>
+            </div>
+            <div>
+              <h4>Sanitizer</h4>
+              <pre id="sanitizer-output" class="log-box"></pre>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/code-review.js"></script>
+</body>
+</html>

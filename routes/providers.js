@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto'
 import { one, query, withTransaction } from '../db/index.js'
+import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
 import { requireAdmin } from '../middleware/auth.js'
 
 function key() {
@@ -29,6 +30,7 @@ function publicProvider(row) {
     name: row.name,
     baseUrl: row.base_url,
     providerType: row.provider_type,
+    apiFormat: row.api_format || 'openai_chat_completions',
     defaultModel: row.default_model,
     isDefault: row.is_default,
     isGlobal,
@@ -38,11 +40,55 @@ function publicProvider(row) {
   }
 }
 
+function trimBaseUrl(baseUrl) {
+  return String(baseUrl || '').replace(/\/+$/, '')
+}
+
+function v1BaseUrl(baseUrl) {
+  const trimmed = trimBaseUrl(baseUrl)
+  return trimmed.endsWith('/v1') ? trimmed : `${trimmed}/v1`
+}
+
+export function chatCompletionsUrl(baseUrl) {
+  return `${v1BaseUrl(baseUrl)}/chat/completions`
+}
+
+export function responsesUrl(baseUrl) {
+  return `${v1BaseUrl(baseUrl)}/responses`
+}
+
+async function loadProviderModels(provider) {
+  const baseUrl = trimBaseUrl(provider.base_url)
+  const apiKey = provider.api_key_ciphertext ? decryptApiKey(provider.api_key_ciphertext) : ''
+  const headers = { 'Content-Type': 'application/json' }
+  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
+
+  const urls = baseUrl.endsWith('/v1')
+    ? [`${baseUrl}/models`]
+    : [`${baseUrl}/v1/models`, `${baseUrl}/models`]
+
+  let lastStatus = 502
+  for (const url of urls) {
+    const resp = await fetch(url, { headers })
+    lastStatus = resp.status
+    if (!resp.ok) continue
+    const json = await resp.json()
+    return (json.data || json.models || [])
+      .map((m) => (typeof m === 'string' ? m : m.id || m.name || ''))
+      .filter(Boolean)
+  }
+
+  const error = new Error(`Upstream ${lastStatus}`)
+  error.statusCode = lastStatus
+  throw error
+}
+
 function normalizeProviderInput(body = {}, existing = null) {
   return {
     name: Object.hasOwn(body, 'name') ? String(body.name || '').trim() : existing?.name,
     baseUrl: Object.hasOwn(body, 'baseUrl') ? String(body.baseUrl || '').trim() : existing?.base_url,
     providerType: Object.hasOwn(body, 'providerType') ? body.providerType || 'openai_compatible' : existing?.provider_type || 'openai_compatible',
+    apiFormat: Object.hasOwn(body, 'apiFormat') ? body.apiFormat || 'openai_chat_completions' : existing?.api_format || 'openai_chat_completions',
     defaultModel: Object.hasOwn(body, 'defaultModel') ? body.defaultModel || null : existing?.default_model || null,
     isDefault: Object.hasOwn(body, 'isDefault') ? Boolean(body.isDefault) : Boolean(existing?.is_default),
   }
@@ -52,12 +98,31 @@ export default async function providerRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
   app.get('/', async () => {
+    const cached = await cacheGetJson('providers:public')
+    if (cached) return cached
     const result = await query(
       `SELECT * FROM providers
        WHERE user_id IS NULL OR is_global = true
        ORDER BY is_default DESC, created_at ASC`,
     )
-    return { providers: result.rows.map(publicProvider) }
+    const payload = { providers: result.rows.map(publicProvider) }
+    await cacheSetJson('providers:public', payload, 60)
+    return payload
+  })
+
+  app.get('/:id/models', async (request, reply) => {
+    const existing = await one(
+      `SELECT * FROM providers
+       WHERE id = $1 AND (user_id = $2 OR user_id IS NULL OR is_global = true)`,
+      [request.params.id, request.user.id],
+    )
+    if (!existing) return reply.code(404).send({ error: 'Provider not found' })
+
+    try {
+      return { models: await loadProviderModels(existing) }
+    } catch (err) {
+      return reply.code(err.statusCode || 502).send({ error: err.message })
+    }
   })
 }
 
@@ -66,12 +131,16 @@ export async function adminProviderRoutes(app) {
   app.addHook('preHandler', requireAdmin)
 
   app.get('/', async () => {
+    const cached = await cacheGetJson('providers:admin')
+    if (cached) return cached
     const result = await query(
       `SELECT * FROM providers
        WHERE user_id IS NULL OR is_global = true
        ORDER BY created_at ASC`,
     )
-    return { providers: result.rows.map(publicProvider) }
+    const payload = { providers: result.rows.map(publicProvider) }
+    await cacheSetJson('providers:admin', payload, 60)
+    return payload
   })
 
   app.post('/', async (request, reply) => {
@@ -80,17 +149,19 @@ export async function adminProviderRoutes(app) {
     if (!input.name || !input.baseUrl) return reply.code(400).send({ error: 'Name and base URL are required' })
 
     const result = await query(
-      `INSERT INTO providers (user_id, name, base_url, api_key_ciphertext, provider_type, default_model, is_default, is_global)
-       VALUES (NULL, $1, $2, $3, $4, $5, false, true)
+      `INSERT INTO providers (user_id, name, base_url, api_key_ciphertext, provider_type, api_format, default_model, is_default, is_global)
+       VALUES (NULL, $1, $2, $3, $4, $5, $6, false, true)
        RETURNING *`,
       [
         input.name,
         input.baseUrl,
         encryptApiKey(String(body.apiKey || '').trim()),
         input.providerType,
+        input.apiFormat,
         input.defaultModel,
       ],
     )
+    await cacheDelPattern('providers:*')
     return reply.code(201).send({ provider: publicProvider(result.rows[0]) })
   })
 
@@ -115,14 +186,16 @@ export async function adminProviderRoutes(app) {
            base_url = $3,
            api_key_ciphertext = $4,
            provider_type = $5,
-           default_model = $6,
+           api_format = $6,
+           default_model = $7,
            is_default = false,
            is_global = true,
            updated_at = now()
        WHERE id = $1 AND (user_id IS NULL OR is_global = true)
        RETURNING *`,
-      [request.params.id, input.name, input.baseUrl, apiKeyCiphertext, input.providerType, input.defaultModel],
+      [request.params.id, input.name, input.baseUrl, apiKeyCiphertext, input.providerType, input.apiFormat, input.defaultModel],
     )
+    await cacheDelPattern('providers:*')
     return { provider: publicProvider(result.rows[0]) }
   })
 
@@ -133,26 +206,10 @@ export async function adminProviderRoutes(app) {
     )
     if (!existing) return reply.code(404).send({ error: 'Provider not found' })
 
-    const baseUrl = existing.base_url.replace(/\/$/, '')
-    const apiKey = existing.api_key_ciphertext ? decryptApiKey(existing.api_key_ciphertext) : ''
-
     try {
-      const headers = { 'Content-Type': 'application/json' }
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
-      const resp = await fetch(`${baseUrl}/v1/models`, { headers })
-      if (!resp.ok) {
-        // fallback: try without /v1 prefix
-        const resp2 = await fetch(`${baseUrl}/models`, { headers })
-        if (!resp2.ok) return reply.code(resp2.status).send({ error: `Upstream ${resp2.status}` })
-        const json2 = await resp2.json()
-        const models = (json2.data || json2.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || '')).filter(Boolean)
-        return { models }
-      }
-      const json = await resp.json()
-      const models = (json.data || json.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || '')).filter(Boolean)
-      return { models }
+      return { models: await loadProviderModels(existing) }
     } catch (err) {
-      return reply.code(502).send({ error: err.message })
+      return reply.code(err.statusCode || 502).send({ error: err.message })
     }
   })
 
@@ -162,6 +219,7 @@ export async function adminProviderRoutes(app) {
       [request.params.id],
     )
     if (!result.rowCount) return reply.code(404).send({ error: 'Provider not found' })
+    await cacheDelPattern('providers:*')
     return { ok: true }
   })
 }

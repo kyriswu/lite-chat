@@ -4,22 +4,33 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Lite Chat</title>
-<script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/highlight.js@11/styles/github-dark.min.css" />
-<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/common.min.js"></script>
+<link rel="stylesheet" href="/vendor/prism/themes/prism.css" />
+<link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+<script>window.Prism = window.Prism || {}; window.Prism.manual = true;</script>
 <style>
   :root {
-    --bg: #0d0d0d; --surface: #1a1a1a; --surface2: #252525; --border: #333;
-    --accent: #7c6aff; --accent2: #a78bfa; --text: #e5e5e5; --text2: #999;
-    --user-bg: #2a2250; --ai-bg: #171717; --danger: #ef4444; --ok: #22c55e;
+    --bg: #f6f7fb; --surface: #ffffff; --surface2: #f1f3f8; --surface3: #e8ebf3; --border: #d9deea;
+    --accent: #6258d6; --accent2: #4f46b8; --text: #1f2430; --text2: #697386;
+    --user-bg: #eef0fb; --ai-bg: #f7f8fc; --danger: #dc2626; --ok: #15803d;
+    --line-soft: rgba(31,36,48,.08);
+    --shadow-card: 0 16px 40px rgba(15,23,42,.06);
+    --shadow-bubble: 0 14px 34px rgba(15,23,42,.07);
     --sidebar-w: 280px;
+    --sidebar-collapsed-w: 72px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
   button, input, textarea, select { font: inherit; }
   button { cursor: pointer; }
+  button:disabled { cursor: not-allowed; opacity: .55; }
   .hidden { display: none !important; }
+
+  #boot-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .boot-box { display: grid; place-items: center; gap: 14px; color: var(--text2); }
+  .boot-mark { width: 54px; height: 54px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border); display: grid; place-items: center; box-shadow: 0 14px 38px rgba(15,23,42,.08); position: relative; }
+  .boot-spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--surface3); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+  .boot-text { font-size: 13px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
   #auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
   .auth-box { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: grid; gap: 16px; }
@@ -39,121 +50,171 @@
   #auth-status, #status { min-height: 18px; color: var(--danger); font-size: 13px; }
 
   #app { display: flex; height: 100vh; overflow: hidden; }
-  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9; }
-  #sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; }
+  #sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.28); z-index: 9; }
+  #sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; transition: width .18s ease, min-width .18s ease; }
+  #sidebar.collapsed { width: var(--sidebar-collapsed-w); min-width: var(--sidebar-collapsed-w); }
   #close-sidebar { display: none; }
-  .sidebar-header { padding: 14px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); gap: 8px; }
-  .sidebar-title { color: var(--accent2); font-weight: 800; }
-  #new-chat-btn { white-space: nowrap; }
-  #conversation-list { flex: 1; overflow-y: auto; padding: 8px; }
-  .conversation { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 8px; color: var(--text2); }
-  .conversation:hover { background: var(--surface2); color: var(--text); }
-  .conversation.active { background: var(--user-bg); color: var(--accent2); }
-  .conversation-title { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .sidebar-header { padding: 14px 12px 12px; display: grid; gap: 10px; border-bottom: 1px solid var(--line-soft); }
+  .sidebar-brand { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sidebar-brand-mark { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: var(--surface2); color: var(--accent2); font-size: 15px; flex-shrink: 0; }
+  .sidebar-title { color: var(--accent2); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-header-actions { display: flex; align-items: center; gap: 8px; }
+  #new-chat-btn { white-space: nowrap; flex: 1; justify-content: center; }
+  #conversation-list { flex: 1; overflow-y: auto; padding: 8px 8px 12px; }
+  .conversation { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 10px; color: var(--text2); cursor: pointer; }
+  .conversation:hover { background: #f4f6fb; color: var(--text); }
+  .conversation.active { background: #eef2f7; color: var(--text); }
+  .conversation.loading { color: var(--accent2); cursor: progress; }
+  .conversation-main { min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .conversation-title { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; color: inherit; }
+  .conversation-time { font-size: 11px; color: var(--text2); white-space: nowrap; }
+  .conversation-menu { opacity: 0; width: 28px; height: 28px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 0; }
+  .conversation:hover .conversation-menu, .conversation.active .conversation-menu { opacity: 1; }
+  .conversation.loading .conversation-title::after { content: "加载中"; margin-left: 6px; font-size: 11px; color: var(--text2); }
+  #sidebar.collapsed .sidebar-title,
+  #sidebar.collapsed #new-chat-btn span:not(.btn-icon),
+  #sidebar.collapsed #user-line,
+  #sidebar.collapsed #admin-btn span:not(.btn-icon),
+  #sidebar.collapsed #logout-btn span:not(.btn-icon),
+  #sidebar.collapsed #status,
+  #sidebar.collapsed #conversation-list,
+  #sidebar.collapsed .sidebar-brand { display: none; }
+  #sidebar.collapsed .sidebar-header { padding-inline: 10px; border-bottom: 0; }
+  #sidebar.collapsed #new-chat-btn,
+  #sidebar.collapsed #admin-btn,
+  #sidebar.collapsed #logout-btn { width: 100%; min-width: 0; padding-inline: 0; }
+  #sidebar.collapsed .sidebar-header-actions,
+  #sidebar.collapsed #settings-panel { justify-items: center; }
+  #sidebar.collapsed #settings-panel { border-top: 0; margin-top: auto; }
   .icon-btn { background: transparent; color: var(--text2); border: 0; border-radius: 6px; padding: 5px 7px; }
   .icon-btn:hover { background: var(--surface2); color: var(--text); }
-  #settings-panel { border-top: 1px solid var(--border); padding: 12px; display: grid; gap: 9px; }
+  .icon-svg { width: 15px; height: 15px; display: block; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-svg.solid { fill: currentColor; stroke: none; }
+  #settings-panel { border-top: 1px solid var(--line-soft); padding: 12px; display: grid; gap: 9px; }
+  #settings-panel .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+  .btn-icon { display: inline-flex; align-items: center; justify-content: center; width: 14px; flex-shrink: 0; }
   #user-line { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   #main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-  #topbar { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 16px; background: var(--surface); border-bottom: 1px solid var(--border); }
-  #chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
-  #messages { flex: 1; overflow-y: auto; padding: 24px 0; }
+  #topbar { height: 56px; display: flex; align-items: center; gap: 10px; padding: 0 18px; background: rgba(255,255,255,.86); border-bottom: 1px solid var(--line-soft); box-shadow: 0 1px 0 rgba(255,255,255,.75); backdrop-filter: blur(10px); }
+  #chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; font-size: 18px; letter-spacing: -.02em; color: #131926; }
+  #messages { flex: 1; overflow-y: auto; padding: 24px 0; background: #f5f7fb; }
   #empty-state { height: 100%; display: grid; place-items: center; color: var(--text2); }
-  .msg-row { max-width: 820px; margin: 0 auto 8px; padding: 0 20px; display: flex; flex-direction: column; }
+  .msg-row { max-width: 860px; margin: 0 auto 16px; padding: 0 22px; display: flex; flex-direction: column; }
   .msg-row.user { align-items: flex-end; }
   .msg-row.assistant { align-items: flex-start; }
-  .msg-label { font-size: 11px; color: var(--text2); margin: 0 4px 4px; }
-  .bubble { max-width: 90%; padding: 12px 16px; border-radius: 16px; line-height: 1.65; font-size: 14.5px; word-break: break-word; }
-  .user .bubble { background: var(--user-bg); border-bottom-right-radius: 4px; }
-  .assistant .bubble { background: var(--ai-bg); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-  .bubble img { max-width: 100%; max-height: 320px; display: block; border-radius: 10px; margin: 6px 0; }
-  .bubble p { margin: 0 0 .6em; }
+  .msg-head { display: flex; align-items: center; gap: 8px; margin: 0 6px 5px; flex-wrap: wrap; }
+  .msg-row.user .msg-head { flex-direction: row-reverse; }
+  .msg-label { font-size: 11px; color: var(--text2); font-weight: 600; }
+  .msg-meta { font-size: 11px; color: var(--text2); opacity: .92; }
+  .msg-actions { display: flex; gap: 4px; margin: 6px 7px 0; opacity: 0; transition: opacity .15s; }
+  .msg-row.user .msg-actions { align-self: flex-end; }
+  .msg-row.assistant .msg-actions { align-self: flex-start; }
+  .msg-row:hover .msg-actions, .msg-row.editing .msg-actions { opacity: 1; }
+  .msg-action { border: 0; background: transparent; color: var(--text2); border-radius: 8px; padding: 4px 7px; font-size: 12px; line-height: 1; min-width: 28px; min-height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+  .msg-action:hover { background: var(--surface2); color: var(--accent2); }
+  .bubble { max-width: min(88%, 760px); padding: 20px 30px; border-radius: 20px; line-height: 1.7; font-size: 15px; word-break: break-word; overflow-wrap: anywhere; box-shadow: var(--shadow-bubble); overflow: hidden; }
+  .user .bubble { background: linear-gradient(135deg, #eef1fb 0%, #e7ecfb 100%); border: 1px solid #d8def1; border-bottom-right-radius: 7px; color: #1c2340; box-shadow: var(--shadow-bubble); }
+  .assistant .bubble { background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(247,248,252,.98) 100%); border: 1px solid #dfe5f0; border-bottom-left-radius: 7px; box-shadow: var(--shadow-card); }
+  .bubble img { max-width: 100%; max-height: 320px; display: block; border-radius: 10px; margin: 10px 0; }
+  .bubble p { margin: 0 0 .75em; }
   .bubble p:last-child { margin-bottom: 0; }
-  .bubble pre { background: #161616; border: 1px solid var(--border); border-radius: 10px; padding: 14px; overflow-x: auto; margin: .6em 0; position: relative; }
-  .bubble code:not(pre code) { background: #2d2d2d; border-radius: 4px; padding: 2px 5px; color: #e2b96b; }
-  .copy-btn { position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 3px 8px; border-radius: 5px; }
+  .bubble h1, .bubble h2, .bubble h3, .bubble h4, .bubble h5, .bubble h6 { color: #151b28; font-weight: 800; line-height: 1.25; letter-spacing: -.02em; margin: 1.05em 0 .55em; }
+  .bubble h1 { font-size: 1.7em; }
+  .bubble h2 { font-size: 1.42em; }
+  .bubble h3 { font-size: 1.22em; }
+  .bubble ul, .bubble ol { margin: 0 0 .9em 1.35em; }
+  .bubble li { margin: .24em 0; }
+  .bubble hr { border: 0; border-top: 1px solid rgba(31,36,48,.09); margin: 1.2em 0; }
+  .bubble pre { background: #f4f7fb; border: 1px solid #d7deea; border-radius: 12px; padding: 42px 20px 18px; overflow-x: auto; margin: .95em 0; position: relative; box-shadow: inset 0 1px 0 rgba(255,255,255,.7); }
+  .bubble pre code[class*="language-"] { display: block; background: transparent; padding: 0; color: #24292f; text-shadow: none; white-space: pre; }
+  .bubble pre .token.keyword, .bubble pre .syntax-keyword { color: #cf222e; }
+  .bubble pre .token.string, .bubble pre .token.char, .bubble pre .syntax-string { color: #0a3069; }
+  .bubble pre .token.number, .bubble pre .token.boolean, .bubble pre .syntax-number { color: #0550ae; }
+  .bubble pre .token.function, .bubble pre .syntax-function { color: #8250df; }
+  .bubble pre .token.comment, .bubble pre .token.prolog, .bubble pre .token.doctype, .bubble pre .syntax-comment { color: #6e7781; font-style: italic; }
+  .bubble pre .token.builtin, .bubble pre .token.constant, .bubble pre .syntax-builtin { color: #953800; }
+  .bubble pre .token.property, .bubble pre .token.attr-name, .bubble pre .syntax-attr { color: #116329; }
+  .bubble pre .token.tag, .bubble pre .token.class-name { color: #116329; }
+  .bubble pre .token.operator, .bubble pre .token.punctuation { color: #24292f; }
+  .bubble code, .bubble pre code, #msg-input, .edit-box textarea { font-family: "SFMono-Regular", "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace; }
+  .bubble code:not(pre code) { background: #edf2ff; border: 1px solid #d6dff7; border-radius: 6px; padding: 2px 7px; color: #2f3e86; font-size: .92em; font-weight: 600; }
+  .bubble .math-inline { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; padding: 0 2px; }
+  .bubble .math-block { display: block; max-width: 100%; overflow-x: auto; overflow-y: hidden; padding: 12px 4px; margin: .85em 0; text-align: center; }
+  .bubble .katex { font-size: 1.04em; }
+  .copy-btn { position: absolute; top: 8px; right: 8px; background: var(--surface2); border: 1px solid var(--border); color: var(--text2); padding: 4px 9px; border-radius: 6px; }
+  .edit-box { display: grid; gap: 10px; min-width: min(520px, 78vw); }
+  .edit-box textarea { width: 100%; min-height: 110px; max-height: 320px; resize: vertical; background: rgba(255,255,255,.72); border: 1px solid #c9cef6; border-radius: 10px; color: #1f2540; padding: 12px; outline: none; line-height: 1.55; }
+  .edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .edit-actions button { border-radius: 8px; padding: 7px 12px; }
   .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent2); animation: blink .8s step-end infinite; vertical-align: text-bottom; margin-left: 2px; }
   @keyframes blink { 50% { opacity: 0; } }
 
-  #image-previews { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 0; max-width: 820px; margin: 0 auto; width: 100%; }
-  .img-preview-wrap { position: relative; width: 72px; height: 72px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-  .img-preview-wrap img { width: 100%; height: 100%; object-fit: cover; }
-  .remove-img { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; background: rgba(0,0,0,.75); color: white; }
-
-  #input-bar { border-top: 1px solid var(--border); padding: 12px 16px 16px; }
-  #input-wrap { max-width: 820px; margin: 0 auto; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; display: flex; flex-direction: column; }
+  #input-bar { border-top: 1px solid var(--line-soft); padding: 14px 16px 18px; }
+  #input-wrap { max-width: 820px; margin: 0 auto; background: rgba(255,255,255,.96); border: 1px solid #dbe1ec; border-radius: 16px; display: flex; flex-direction: column; transition: opacity .15s, border-color .15s, box-shadow .15s; box-shadow: var(--shadow-card); }
+  #input-wrap.disabled { opacity: .62; border-color: var(--surface3); }
+  #input-wrap:focus-within { border-color: #cdd6ec; box-shadow: 0 18px 44px rgba(15,23,42,.08); }
   #msg-input { background: transparent; border: 0; color: var(--text); resize: none; padding: 14px 16px 6px; min-height: 56px; max-height: 200px; outline: none; }
+  #msg-input:disabled { cursor: progress; }
   #input-actions { display: flex; align-items: center; gap: 6px; padding: 6px 10px 10px; }
-  #send-btn { margin-left: auto; width: 36px; height: 36px; border-radius: 10px; border: 0; background: var(--accent); color: white; font-size: 18px; }
+  #send-btn { margin-left: auto; width: 36px; height: 36px; border-radius: 10px; border: 0; background: var(--accent); color: white; font-size: 18px; display: inline-flex; align-items: center; justify-content: center; }
   #send-btn:disabled { opacity: .45; cursor: not-allowed; }
   .hint { color: var(--text2); font-size: 11px; text-align: center; margin-top: 6px; }
 
-  .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65); z-index: 20; align-items: center; justify-content: center; padding: 16px; }
+  .modal { display: none; position: fixed; inset: 0; background: rgba(15,23,42,.36); z-index: 20; align-items: center; justify-content: center; padding: 16px; }
   .modal.open { display: flex; }
   .modal-box { width: min(520px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; display: grid; gap: 12px; }
   .modal-box.wide { width: min(760px, 100%); max-height: min(90vh, 900px); display: flex; flex-direction: column; gap: 12px; }
   .modal-title { font-size: 16px; font-weight: 800; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .admin-provider-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
-  .admin-provider-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-  .admin-provider-name { font-weight: 650; }
-  .admin-provider-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .admin-provider-actions { display: flex; gap: 6px; }
   /* Skill 选择器 */
-  .skill-btn { background: none; border: none; cursor: pointer; padding: 0 6px; color: var(--text2); font-size: 18px; line-height: 1; transition: color .15s; flex-shrink: 0; }
+  .skill-btn { background: none; border: none; cursor: pointer; padding: 0 6px; color: var(--text2); line-height: 1; transition: color .15s; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
   .skill-btn:hover, .skill-btn.active { color: var(--accent); }
-  .skill-picker { position: absolute; bottom: 100%; left: 0; background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 220px; max-height: 280px; overflow-y: auto; box-shadow: 0 4px 16px rgba(0,0,0,.3); z-index: 100; }
+  .skill-picker { position: absolute; bottom: 100%; left: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column; gap: 4px; min-width: 220px; max-height: 280px; overflow-y: auto; box-shadow: 0 12px 28px rgba(15,23,42,.14); z-index: 100; }
   .skill-picker.hidden { display: none; }
   .skill-item { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; }
-  .skill-item:hover, .skill-item.active { background: var(--surface3, #2a2a3a); }
+  .skill-item:hover, .skill-item.active { background: var(--surface3); }
   .skill-item-icon { font-size: 20px; flex-shrink: 0; }
   .skill-item-text { flex: 1; min-width: 0; }
   .skill-item-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .skill-item-desc { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .skill-none { padding: 6px 10px; font-size: 12px; color: var(--text2); text-align: center; }
-  /* 管理员 skill 列表 */
-  .admin-skill-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; }
-  .admin-skill-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-  .admin-skill-row.has-files { cursor: pointer; }
-  .admin-skill-name { font-weight: 650; }
-  .admin-skill-meta { color: var(--text2); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .admin-skill-actions { display: flex; gap: 6px; }
-  .skill-files-badge { font-size: 12px; padding: 4px 7px; color: var(--accent2); background: var(--surface); border: 1px solid var(--border); border-radius: 7px; }
-  .skill-files-list { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 8px; display: grid; gap: 5px; cursor: default; }
-  .skill-file-item { display: flex; justify-content: space-between; gap: 12px; color: var(--text2); font-size: 12px; }
-  .skill-file-path { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #admin-pane-providers, #admin-pane-skills { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
-  .clawhub-attachment-preview { color: var(--text2); font-size: 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-  .clawhub-result-item { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border); font-size:13px; transition:background .15s; }
-  .clawhub-result-item:last-child { border-bottom:none; }
-  .clawhub-result-item:hover { background:var(--surface3,#2a2a3a); }
-  .clawhub-result-slug { font-weight:600; color:var(--accent); margin-right:8px; flex-shrink:0; }
-  .clawhub-result-desc { color:var(--text2); flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .clawhub-import-btn { font-size:11px; padding:3px 8px; background:var(--accent); color:#fff; border:none; border-radius:5px; cursor:pointer; flex-shrink:0; margin-left:8px; }
-  .clawhub-import-btn:hover { opacity:0.85; }
-  .model-select-wrapper {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-  .model-select-wrapper select.input {
-    flex: 1;
-    min-width: 0;
-  }
+
 
   @media (max-width: 720px) {
     #sidebar-overlay.show { display: block; }
-    #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(0,0,0,.4); }
+    #sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform .18s; z-index: 10; box-shadow: 4px 0 24px rgba(15,23,42,.16); width: var(--sidebar-w); min-width: var(--sidebar-w); }
+    #sidebar.collapsed { width: var(--sidebar-w); min-width: var(--sidebar-w); }
     #sidebar.open { transform: translateX(0); }
     #close-sidebar { display: inline-flex; }
     .bubble { max-width: 96%; }
     #topbar { padding: 0 10px; }
   }
 </style>
+<script>
+  const ICONS = {
+    panelOpen: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="m14 9 3 3-3 3"></path></svg>',
+    panelClose: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><path d="M9 4v16"></path><path d="m17 9-3 3 3 3"></path></svg>',
+    plus: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>',
+    admin: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 4v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7l7-4Z"></path><path d="M9.5 12.5 11 14l3.5-4"></path></svg>',
+    logout: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><path d="m16 17 5-5-5-5"></path><path d="M21 12H9"></path></svg>',
+    more: '<svg class="icon-svg solid" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"></circle><circle cx="12" cy="12" r="1.8"></circle><circle cx="19" cy="12" r="1.8"></circle></svg>',
+    bolt: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg>',
+    image: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><circle cx="8.5" cy="10" r="1.5"></circle><path d="m21 15-4.5-4.5L7 20"></path></svg>',
+    send: '<svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true" style="stroke:white"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>',
+    stop: '<svg class="icon-svg solid" viewBox="0 0 24 24" aria-hidden="true" style="fill:white"><rect x="7" y="7" width="10" height="10" rx="2"></rect></svg>',
+  }
+</script>
 </head>
 <body>
-<section id="auth-screen">
+<section id="boot-screen">
+  <div class="boot-box">
+    <div class="boot-mark"><div class="boot-spinner"></div></div>
+    <div class="boot-text">正在进入 Lite Chat</div>
+  </div>
+</section>
+
+<section id="auth-screen" class="hidden">
   <div class="auth-box">
     <div class="auth-title">Lite Chat</div>
     <div class="tabs">
@@ -174,41 +235,41 @@
   <div id="sidebar-overlay"></div>
   <aside id="sidebar">
     <div class="sidebar-header">
-      <span class="sidebar-title">Lite Chat</span>
-      <button class="icon-btn" id="close-sidebar" title="关闭">✕</button>
-      <button class="secondary" id="new-chat-btn">新对话</button>
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-mark">✦</div>
+        <span class="sidebar-title">Lite Chat</span>
+      </div>
+      <div class="sidebar-header-actions">
+        <button class="icon-btn" id="close-sidebar" title="关闭">✕</button>
+        <button class="secondary" id="new-chat-btn"><span class="btn-icon"></span><span>新对话</span></button>
+      </div>
     </div>
     <div id="conversation-list"></div>
     <div id="settings-panel">
       <div id="user-line"></div>
-      <label>模型</label>
-      <select id="model-select"><option value="">加载中...</option></select>
-      <button class="secondary hidden" id="admin-btn">管理员</button>
-      <button class="secondary" id="logout-btn">退出登录</button>
+      <button class="secondary hidden" id="admin-btn"><span class="btn-icon"></span><span>管理员</span></button>
+      <button class="secondary" id="logout-btn"><span class="btn-icon"></span><span>退出登录</span></button>
       <div id="status"></div>
     </div>
   </aside>
 
   <main id="main">
     <div id="topbar">
-      <button class="icon-btn" id="toggle-sidebar" title="侧栏">☰</button>
+      <button class="icon-btn" id="toggle-sidebar" title="收起侧栏"></button>
       <span id="chat-title">新对话</span>
+      <button class="secondary" id="code-review-btn">代码审查</button>
       <button class="secondary" id="sys-prompt-btn">系统提示</button>
     </div>
     <div id="messages"><div id="empty-state">开始对话</div></div>
-    <div id="image-previews"></div>
     <div id="input-bar">
       <div id="input-wrap">
-        <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行，支持粘贴图片"></textarea>
+        <textarea id="msg-input" rows="1" placeholder="输入消息，Shift+Enter 换行"></textarea>
         <div id="input-actions">
           <div style="position:relative">
             <div class="skill-picker hidden" id="skill-picker"></div>
-            <button class="skill-btn" id="skill-btn" title="选择技能">⚡</button>
+            <button class="skill-btn" id="skill-btn" title="选择技能"></button>
           </div>
-          <button class="icon-btn" id="upload-btn" title="上传图片">🖼</button>
-          <input type="file" id="file-input" accept="image/*" multiple hidden />
-          <button class="icon-btn danger" id="clear-btn" title="删除对话">🗑</button>
-          <button id="send-btn" title="发送">↑</button>
+          <button id="send-btn" title="发送消息"></button>
         </div>
       </div>
       <div class="hint">Enter 发送 · Shift+Enter 换行</div>
@@ -227,69 +288,7 @@
   </div>
 </div>
 
-<div class="modal" id="admin-modal">
-  <div class="modal-box wide">
-    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
-      <span>管理员</span>
-      <button type="button" id="admin-modal-close" title="关闭" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:0 2px;">×</button>
-    </div>
-    <div class="tabs" style="margin-bottom:12px;flex-shrink:0;">
-      <button class="tab active" id="admin-tab-providers">供应商</button>
-      <button class="tab" id="admin-tab-skills">技能</button>
-    </div>
-    <div id="admin-pane-providers">
-      <div class="admin-provider-list" id="admin-provider-list"></div>
-      <form class="form" id="admin-provider-form">
-        <input type="hidden" id="admin-provider-id" />
-        <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
-        <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
-        <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
-        <div class="field">
-          <label>默认模型</label>
-          <div class="model-select-wrapper" id="admin-model-select-wrapper">
-            <select class="input" id="admin-provider-default-model-select" style="flex:1;">
-              <option value="">-- 请先点击刷新加载模型 --</option>
-            </select>
-            <button class="secondary" type="button" id="admin-load-models-btn" title="从 Base URL 加载模型列表" style="white-space:nowrap;">⟳ 刷新</button>
-          </div>
-          <input class="input" id="admin-provider-default-model" placeholder="或手动输入模型名称" style="margin-top:6px;" />
-          <div id="admin-model-load-status" style="font-size:12px; color:var(--text2); margin-top:4px; display:none;"></div>
-        </div>
-        <div class="modal-actions">
-          <button class="secondary" id="admin-provider-reset" type="button">清空</button>
-          <button class="primary" type="submit">保存全局 Provider</button>
-        </div>
-      </form>
-    </div>
-    <div id="admin-pane-skills" class="hidden">
-      <!-- ClawHub 在线导入 -->
-      <div class="clawhub-import" style="margin-bottom:12px; display:flex; flex-direction:column; gap:8px;">
-        <div style="font-size:12px; font-weight:600; color:var(--text2);">⚡ 从 ClawHub 导入技能</div>
-        <div style="display:flex; gap:6px;">
-          <input class="input" id="clawhub-search-input" placeholder="搜索 ClawHub 技能（如：翻译、写作）" style="flex:1; font-size:13px;" />
-          <button class="secondary" id="clawhub-search-btn" style="font-size:12px; padding:0 12px;">搜索</button>
-        </div>
-        <div id="clawhub-results" class="hidden" style="background:var(--surface2); border:1px solid var(--border); border-radius:8px; max-height:200px; overflow-y:auto;"></div>
-      </div>
-      <div class="admin-skill-list" id="admin-skill-list"></div>
-      <form class="form" id="admin-skill-form">
-        <input type="hidden" id="admin-skill-id" />
-        <input type="hidden" id="admin-skill-clawhub-slug" />
-        <div class="field"><label>图标 Emoji</label><input class="input" id="admin-skill-icon" value="🤖" maxlength="4" style="width:60px" /></div>
-        <div class="field"><label>名称</label><input class="input" id="admin-skill-name" required /></div>
-        <div class="field"><label>描述（一句话）</label><input class="input" id="admin-skill-desc" /></div>
-        <div class="clawhub-attachment-preview hidden" id="clawhub-attachment-preview"></div>
-        <div class="field"><label>System Prompt</label><textarea class="input" id="admin-skill-prompt" rows="4" required style="resize:vertical"></textarea></div>
-        <div class="field"><label>排序</label><input class="input" id="admin-skill-order" type="number" value="0" /></div>
-        <div class="field"><label><input type="checkbox" id="admin-skill-active" checked /> 启用</label></div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-          <button class="secondary" id="admin-skill-reset" type="button">清空</button>
-          <button class="btn" type="submit">保存</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
+
 
 <script>
 const LS = {
@@ -298,13 +297,229 @@ const LS = {
   del: (key) => localStorage.removeItem(key),
 }
 
-marked.setOptions({ breaks: true, gfm: true })
-const renderer = new marked.Renderer()
-renderer.code = ({ text, lang }) => {
-  const highlighted = lang && hljs.getLanguage(lang) ? hljs.highlight(text, { language: lang }).value : hljs.highlightAuto(text).value
-  return `<pre><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="hljs language-${escAttr(lang || '')}">${highlighted}</code></pre>`
+function configureMarkdownRenderer() {
+  if (!window.marked || window.__markdownRendererReady) return
+  marked.setOptions({ breaks: true, gfm: true })
+  const renderer = new marked.Renderer()
+  renderer.code = (tokenOrCode, infostring) => {
+    const isToken = tokenOrCode && typeof tokenOrCode === 'object'
+    const text = isToken ? tokenOrCode.text : tokenOrCode
+    const lang = cleanCodeLanguage(isToken ? tokenOrCode.lang : infostring)
+    const prismLang = normalizePrismLanguage(lang)
+    const langClass = prismLang ? `language-${escAttr(prismLang)}` : 'language-none'
+    return `<pre class="${langClass}"><button class="copy-btn" onclick="copyCode(this)">复制</button><code class="${langClass}">${escHtml(text || '')}</code></pre>`
+  }
+  marked.use({ renderer })
+  window.__markdownRendererReady = true
 }
-marked.use({ renderer })
+
+function renderMarkdown(value) {
+  configureMarkdownRenderer()
+  const text = String(value || '')
+  const withLatex = renderLatexInMarkdown(text)
+  if (!window.marked) return withLatex.html
+  try {
+    return marked.parse(withLatex.html)
+  } catch {
+    return withLatex.fallback
+  }
+}
+
+function renderLatexInMarkdown(text) {
+  const source = String(text || '')
+  const fallback = escHtml(source).replace(/\n/g, '<br>')
+  if (!window.katex?.renderToString) return { html: source, fallback }
+
+  const protectedParts = []
+  const protect = (match) => {
+    const index = protectedParts.length
+    protectedParts.push(match)
+    return `\uE000${index}\uE001`
+  }
+  let html = source
+    .replace(/```[\s\S]*?```/g, protect)
+    .replace(/~~~[\s\S]*?~~~/g, protect)
+    .replace(/`[^`\n]*(?:`|$)/g, protect)
+
+  html = renderBlockLatex(html, /\$\$([\s\S]+?)\$\$/g, '$$', '$$')
+  html = renderBlockLatex(html, /\\\[([\s\S]+?)\\\]/g, '\\[', '\\]')
+  html = renderInlineLatex(html, /\\\(([\s\S]+?)\\\)/g, '\\(', '\\)')
+  html = renderDollarInlineLatex(html)
+
+  html = html.replace(/\uE000(\d+)\uE001/g, (_, index) => protectedParts[Number(index)] || '')
+  return { html, fallback }
+}
+
+function renderBlockLatex(value, pattern, open, close) {
+  return value.replace(pattern, (match, formula) => {
+    const rendered = renderLatexFormula(formula, { displayMode: true })
+    return rendered || escHtml(`${open}${formula}${close}`)
+  })
+}
+
+function renderInlineLatex(value, pattern, open, close) {
+  return value.replace(pattern, (match, formula) => {
+    const rendered = renderLatexFormula(formula, { displayMode: false })
+    return rendered || escHtml(`${open}${formula}${close}`)
+  })
+}
+
+function renderDollarInlineLatex(value) {
+  return value.replace(/(^|[^\w\\])\$([^\n$]+?)\$(?![\w])/g, (match, prefix, formula) => {
+    const trimmed = String(formula || '').trim()
+    if (!looksLikeLatex(trimmed)) return match
+    const rendered = renderLatexFormula(trimmed, { displayMode: false })
+    return rendered ? `${prefix}${rendered}` : match
+  })
+}
+
+function looksLikeLatex(value) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (/^\d+(?:\.\d+)?$/.test(text)) return false
+  return /[\\^_{}=+\-*/<>]|[A-Za-zα-ωΑ-Ω]/.test(text)
+}
+
+function renderLatexFormula(formula, options = {}) {
+  const tex = String(formula || '').trim()
+  if (!tex) return ''
+  try {
+    const rendered = katex.renderToString(tex, {
+      displayMode: Boolean(options.displayMode),
+      throwOnError: false,
+      strict: 'ignore',
+      trust: false,
+      output: 'html',
+    })
+    return options.displayMode
+      ? `<div class="math-block">${rendered}</div>`
+      : `<span class="math-inline">${rendered}</span>`
+  } catch {
+    return ''
+  }
+}
+
+function loadScript(src) {
+  if ([...document.scripts].some((script) => script.src === src)) return Promise.resolve()
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script')
+    script.src = src
+    script.async = true
+    script.onload = resolve
+    script.onerror = reject
+    document.head.appendChild(script)
+  })
+}
+
+let markdownLibrariesPromise = null
+function loadMarkdownLibraries() {
+  if (markdownLibrariesPromise) return markdownLibrariesPromise
+  markdownLibrariesPromise = Promise.allSettled([
+    window.marked ? Promise.resolve() : loadScript('/vendor/marked/marked.min.js'),
+    window.Prism?.highlightElement ? Promise.resolve() : loadScript('/vendor/prism/prism.js'),
+    window.katex?.renderToString ? Promise.resolve() : loadScript('/vendor/katex/katex.min.js'),
+  ]).then(() => (
+    window.Prism?.plugins?.autoloader ? null : loadScript('/vendor/prism/plugins/autoloader/prism-autoloader.min.js').catch(() => {})
+  )).then(() => {
+    configureMarkdownRenderer()
+    if (messages.length) renderMessages(messages, { scrollMode: 'preserve' })
+  })
+  return markdownLibrariesPromise
+}
+
+function cleanCodeLanguage(value) {
+  return String(value || '').trim().split(/\s+/)[0].replace(/[^\w#+.-]/g, '')
+}
+
+function normalizePrismLanguage(lang) {
+  const aliases = {
+    js: 'javascript',
+    jsx: 'jsx',
+    ts: 'typescript',
+    tsx: 'tsx',
+    py: 'python',
+    sh: 'bash',
+    shell: 'bash',
+    zsh: 'bash',
+    yml: 'yaml',
+    md: 'markdown',
+    html: 'markup',
+    xml: 'markup',
+    svg: 'markup',
+    vue: 'markup',
+  }
+  const normalized = String(lang || '').toLowerCase()
+  return aliases[normalized] || normalized
+}
+
+function applySyntaxHighlighting(root) {
+  if (!root) return
+  if (window.Prism?.plugins?.autoloader) {
+    window.Prism.plugins.autoloader.languages_path = '/vendor/prism/components/'
+  }
+  for (const code of root.querySelectorAll('pre code')) {
+    if (code.dataset.highlighted) continue
+    const lang = getCodeLanguage(code)
+    const text = code.textContent || ''
+    if (window.Prism?.highlightElement) {
+      try {
+        window.Prism.highlightElement(code)
+        code.dataset.highlighted = 'yes'
+        continue
+      } catch {}
+    }
+    applyFallbackHighlighting(code, lang, text)
+  }
+}
+
+function getCodeLanguage(code) {
+  return Array.from(code.classList)
+    .find((name) => name.startsWith('language-'))
+    ?.slice('language-'.length)
+    .toLowerCase()
+}
+
+function applyFallbackHighlighting(code, lang = getCodeLanguage(code), text = code.textContent || '') {
+  code.innerHTML = fallbackHighlightCode(text, lang)
+  code.dataset.highlighted = 'yes'
+}
+
+function fallbackHighlightCode(text, lang = '') {
+  const placeholders = []
+  let html = escHtml(text)
+  const keep = (className) => (match) => {
+    const id = placeholders.length
+    placeholders.push(`<span class="${className}">${match}</span>`)
+    return `\u0000${id}\u0000`
+  }
+
+  html = html
+    .replace(/(&quot;[^&]*(?:&quot;|$)|&#39;[^&]*(?:&#39;|$)|`[^`]*(?:`|$))/g, keep('syntax-string'))
+    .replace(/(\/\/.*|#.*|\/\*[\s\S]*?\*\/)/g, keep('syntax-comment'))
+    .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="syntax-number">$1</span>')
+
+  const keywordSets = {
+    js: 'async await break case catch class const continue default delete do else export extends finally for from function if import in instanceof let new of return static switch throw try typeof var void while with yield true false null undefined',
+    javascript: 'async await break case catch class const continue default delete do else export extends finally for from function if import in instanceof let new of return static switch throw try typeof var void while with yield true false null undefined',
+    ts: 'abstract any as async await boolean break case catch class const constructor continue default delete do else enum export extends false finally for from function if implements import in instanceof interface let module namespace new null number of private protected public readonly return static string super switch this throw true try type typeof undefined var void while with yield',
+    typescript: 'abstract any as async await boolean break case catch class const constructor continue default delete do else enum export extends false finally for from function if implements import in instanceof interface let module namespace new null number of private protected public readonly return static string super switch this throw true try type typeof undefined var void while with yield',
+    python: 'and as assert async await break class continue def del elif else except false finally for from global if import in is lambda none nonlocal not or pass raise return true try while with yield',
+    py: 'and as assert async await break class continue def del elif else except false finally for from global if import in is lambda none nonlocal not or pass raise return true try while with yield',
+    json: 'true false null',
+    bash: 'case do done elif else esac export fi for function if in local then while',
+    sh: 'case do done elif else esac export fi for function if in local then while',
+    css: 'important inherit initial unset',
+    html: '',
+  }
+  const keywords = keywordSets[lang] || keywordSets.javascript
+  if (keywords) {
+    const pattern = new RegExp(`\\b(${keywords.trim().split(/\s+/).join('|')})\\b`, 'g')
+    html = html.replace(pattern, '<span class="syntax-keyword">$1</span>')
+  }
+  html = html.replace(/\b([A-Za-z_$][\w$]*)\s*(?=\()/g, '<span class="syntax-function">$1</span>')
+  html = html.replace(/\u0000(\d+)\u0000/g, (_, id) => placeholders[Number(id)] || '')
+  return html
+}
 
 let authToken = LS.get('authToken', '')
 let currentUser = null
@@ -312,28 +527,61 @@ let providers = []
 let conversations = []
 let currentConversation = null
 let messages = []
-let pendingImages = []
-let isStreaming = false
+let isConversationLoading = false
+let loadingConversationId = null
+let switchConversationSeq = 0
+let editingMessageId = null
+const conversationDataCache = new Map()
+const conversationFetches = new Map()
+const conversationScrollPositions = new Map()
+const streamingConversationIds = new Set()
+const streamControllers = new Map()
 let authMode = 'login'
-let adminProviders = []
 let skills = []
-let adminSkills = []
-let adminSkillFiles = {}
 let activeSkillId = null
+let skillSelectionTouched = false
+let sidebarCollapsed = LS.get('sidebarCollapsed', false)
+const pastedImageRegistry = new Map()
 
 const $ = (id) => document.getElementById(id)
 const refs = {
-  authScreen: $('auth-screen'), app: $('app'), authForm: $('auth-form'), authStatus: $('auth-status'),
+  bootScreen: $('boot-screen'), authScreen: $('auth-screen'), app: $('app'), authForm: $('auth-form'), authStatus: $('auth-status'),
   loginTab: $('login-tab'), registerTab: $('register-tab'), nameField: $('name-field'), authSubmit: $('auth-submit'),
   list: $('conversation-list'), title: $('chat-title'), messages: $('messages'), input: $('msg-input'),
-  send: $('send-btn'), previews: $('image-previews'), model: $('model-select'),
+  send: $('send-btn'),
   status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
   sysInput: $('sys-prompt-input'),
-  adminBtn: $('admin-btn'), adminModal: $('admin-modal'), adminProviderList: $('admin-provider-list'),
-  adminProviderForm: $('admin-provider-form'), skillBtn: $('skill-btn'), skillPicker: $('skill-picker'),
-  adminSkillList: $('admin-skill-list'), adminSkillForm: $('admin-skill-form'),
-  adminTabProviders: $('admin-tab-providers'), adminTabSkills: $('admin-tab-skills'),
-  adminPaneProviders: $('admin-pane-providers'), adminPaneSkills: $('admin-pane-skills'),
+  adminBtn: $('admin-btn'), skillBtn: $('skill-btn'), skillPicker: $('skill-picker'),
+}
+
+function updateSidebarCollapsedUI() {
+  const collapsed = sidebarCollapsed && window.innerWidth > 720
+  refs.sidebar.classList.toggle('collapsed', collapsed)
+  $('toggle-sidebar').innerHTML = collapsed ? ICONS.panelOpen : ICONS.panelClose
+  $('toggle-sidebar').title = collapsed ? '展开侧栏' : '收起侧栏'
+}
+
+function renderStaticIcons() {
+  $('new-chat-btn').querySelector('.btn-icon').innerHTML = ICONS.plus
+  $('admin-btn').querySelector('.btn-icon').innerHTML = ICONS.admin
+  $('logout-btn').querySelector('.btn-icon').innerHTML = ICONS.logout
+  refs.skillBtn.innerHTML = ICONS.bolt
+  refs.send.innerHTML = ICONS.send
+}
+
+function setComposerDisabled(disabled, conversationId = currentConversation?.id) {
+  const conversationStreaming = Boolean(conversationId && streamingConversationIds.has(conversationId))
+  const inputDisabled = disabled || conversationStreaming
+  refs.input.disabled = inputDisabled
+  refs.send.disabled = disabled
+  refs.send.innerHTML = conversationStreaming ? ICONS.stop : ICONS.send
+  refs.send.title = conversationStreaming ? '停止思考' : '发送消息'
+  $('input-wrap').classList.toggle('disabled', inputDisabled)
+  refs.input.placeholder = disabled
+    ? '正在加载对话...'
+    : conversationStreaming
+      ? '当前对话正在生成回复...'
+      : '输入消息，Shift+Enter 换行'
 }
 
 async function api(path, options = {}) {
@@ -344,7 +592,12 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
-    try { message = (await res.json()).error || message } catch {}
+    try {
+      const data = await res.json()
+      message = data.error || data.message || message
+    } catch {
+      try { message = await res.text() || message } catch {}
+    }
     throw new Error(message)
   }
   if (res.status === 204) return null
@@ -354,6 +607,23 @@ async function api(path, options = {}) {
 function setStatus(text, danger = true) {
   refs.status.textContent = text || ''
   refs.status.style.color = danger ? 'var(--danger)' : 'var(--ok)'
+}
+
+function formatRelativeTime(value) {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const diffMs = Date.now() - date.getTime()
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000))
+  if (diffMinutes < 1) return '刚刚'
+  if (diffMinutes < 60) return `${diffMinutes}分钟前`
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours}小时前`
+  const diffDays = Math.floor(diffHours / 24)
+  if (diffDays < 30) return `${diffDays}天前`
+  const month = `${date.getMonth() + 1}`.padStart(2, '0')
+  const day = `${date.getDate()}`.padStart(2, '0')
+  return `${month}-${day}`
 }
 
 function setAuthMode(mode) {
@@ -388,25 +658,25 @@ refs.authForm.onsubmit = async (event) => {
 }
 
 async function enterApp() {
+  refs.bootScreen.classList.add('hidden')
   refs.authScreen.classList.add('hidden')
   refs.app.classList.remove('hidden')
+  renderStaticIcons()
+  updateSidebarCollapsedUI()
   refs.userLine.textContent = currentUser?.email || ''
   refs.adminBtn.classList.toggle('hidden', !currentUser?.isAdmin)
-  await Promise.all([loadProviders(), loadConversations(), loadSettings(), loadSkills()])
+  await Promise.all([loadProviders(), loadConversations()])
+  loadSkills()
+  loadMarkdownLibraries()
   const activeId = LS.get('activeConversationId', null)
   if (activeId && conversations.some((c) => c.id === activeId)) await switchConversation(activeId)
   else if (conversations[0]) await switchConversation(conversations[0].id)
   else renderMessages([])
 }
 
-async function loadSettings() {
-  try { await api('/api/settings') } catch {}
-}
-
 async function loadProviders() {
   const data = await api('/api/providers')
   providers = data.providers || []
-  await loadModels()
 }
 
 async function loadSkills() {
@@ -414,6 +684,10 @@ async function loadSkills() {
     const data = await api('/api/skills')
     skills = data.skills || []
     if (activeSkillId && !skills.some((skill) => skill.id === activeSkillId)) activeSkillId = null
+    if (!skillSelectionTouched) {
+      const defaultSkill = skills.find((skill) => skill.is_default)
+      activeSkillId = defaultSkill?.id || null
+    }
     renderSkillPicker()
   } catch {
     skills = []
@@ -428,6 +702,7 @@ function renderSkillPicker() {
   none.className = `skill-item${activeSkillId ? '' : ' active'}`
   none.innerHTML = '<div class="skill-item-icon">∅</div><div class="skill-item-text"><div class="skill-item-name">无技能</div><div class="skill-item-desc">使用当前对话系统提示词</div></div>'
   none.onclick = () => {
+    skillSelectionTouched = true
     activeSkillId = null
     refs.skillPicker.classList.add('hidden')
     renderSkillPicker()
@@ -447,10 +722,11 @@ function renderSkillPicker() {
     item.innerHTML = `
       <div class="skill-item-icon">${escHtml(skill.icon || '🤖')}</div>
       <div class="skill-item-text">
-        <div class="skill-item-name">${escHtml(skill.name)}</div>
+        <div class="skill-item-name">${escHtml(skill.name)}${skill.is_default ? ' <span style="color:var(--accent2);font-size:11px;">默认</span>' : ''}</div>
         <div class="skill-item-desc">${escHtml(skill.description || '')}</div>
       </div>`
     item.onclick = () => {
+      skillSelectionTouched = true
       activeSkillId = skill.id
       refs.skillPicker.classList.add('hidden')
       renderSkillPicker()
@@ -467,43 +743,87 @@ function getSelectedProvider() {
   return providers.find((p) => p.isDefault) || providers[0] || null
 }
 
-async function loadModels() {
-  const provider = getSelectedProvider()
-  const providerId = provider?.id || ''
-  refs.model.innerHTML = '<option value="">加载中...</option>'
-  if (!providerId) {
-    refs.model.innerHTML = '<option value="">暂无可用模型</option>'
-    setStatus('请联系管理员配置全局 Provider')
-    return
-  }
-  try {
-    const { models } = await api(`/api/providers/${providerId}/models`)
-    const preferred = LS.get('lastModel', '') || provider?.defaultModel || currentConversation?.model || ''
-    refs.model.innerHTML = (models || []).map((m) => `<option value="${escAttr(m)}"${m === preferred ? ' selected' : ''}>${escHtml(m)}</option>`).join('')
-    if (!refs.model.innerHTML) refs.model.innerHTML = '<option value="">没有可用模型</option>'
-  } catch (err) {
-    refs.model.innerHTML = '<option value="">模型加载失败</option>'
-    setStatus(err.message)
-  }
+async function loadConversations() {
+  const data = await api('/api/conversations?limit=50')
+  conversations = data.conversations || []
+  pruneConversationCache()
+  renderSidebar()
 }
 
-async function loadConversations() {
-  const data = await api('/api/conversations')
-  conversations = data.conversations || []
-  renderSidebar()
+async function fetchConversationData(id, { force = false } = {}) {
+  if (!force && conversationDataCache.has(id)) return conversationDataCache.get(id)
+  if (!force && conversationFetches.has(id)) return conversationFetches.get(id)
+
+  const request = api(`/api/conversations/${id}?limit=100`)
+    .then((data) => {
+      conversationDataCache.set(id, data)
+      conversationFetches.delete(id)
+      return data
+    })
+    .catch((err) => {
+      conversationFetches.delete(id)
+      throw err
+    })
+  conversationFetches.set(id, request)
+  return request
+}
+
+function clearConversationDataCache(id) {
+  if (!id) return
+  conversationDataCache.delete(id)
+  conversationFetches.delete(id)
+  conversationScrollPositions.delete(id)
+}
+
+function updateConversationDataCache(conversation = currentConversation, items = messages) {
+  if (!conversation?.id) return
+  conversationDataCache.set(conversation.id, {
+    conversation,
+    messages: [...items],
+  })
+}
+
+async function refreshConversationDataById(conversationId, { render = false } = {}) {
+  if (!conversationId) return null
+  const data = await fetchConversationData(conversationId, { force: true })
+  conversationDataCache.set(conversationId, data)
+  if (render && currentConversation?.id === conversationId) {
+    applyConversationData(data, conversationId)
+  } else if (currentConversation?.id === conversationId) {
+    currentConversation = data.conversation
+    messages = data.messages || []
+    updateConversationDataCache()
+  }
+  return data
+}
+
+function pruneConversationCache() {
+  const ids = new Set(conversations.map((conversation) => conversation.id))
+  for (const id of conversationDataCache.keys()) {
+    if (!ids.has(id)) clearConversationDataCache(id)
+  }
 }
 
 function renderSidebar() {
   refs.list.innerHTML = ''
   for (const c of conversations) {
     const row = document.createElement('div')
-    row.className = `conversation${currentConversation?.id === c.id ? ' active' : ''}`
-    row.innerHTML = `<span class="conversation-title">${escHtml(c.title)}</span><button class="icon-btn danger" title="删除">✕</button>`
-    row.querySelector('.conversation-title').onclick = () => switchConversation(c.id)
+    row.className = `conversation${currentConversation?.id === c.id ? ' active' : ''}${loadingConversationId === c.id ? ' loading' : ''}`
+    const timeText = formatRelativeTime(c.updatedAt || c.updated_at || c.createdAt || c.created_at)
+    row.innerHTML = `
+      <div class="conversation-main">
+        <span class="conversation-title">${escHtml(c.title)}</span>
+      </div>
+      <span class="conversation-time">${escHtml(timeText)}</span>
+      <button class="icon-btn danger conversation-menu" title="删除">${ICONS.more}</button>
+    `
+    row.onmouseenter = () => { fetchConversationData(c.id).catch(() => {}) }
+    row.onclick = () => switchConversation(c.id)
     row.querySelector('button').onclick = async (event) => {
       event.stopPropagation()
       if (!confirm('删除该对话？')) return
       await api(`/api/conversations/${c.id}`, { method: 'DELETE' })
+      clearConversationDataCache(c.id)
       if (currentConversation?.id === c.id) {
         currentConversation = null
         messages = []
@@ -518,489 +838,723 @@ function renderSidebar() {
 }
 
 async function newConversation() {
-  const model = refs.model.value || null
   const data = await api('/api/conversations', {
     method: 'POST',
-    body: JSON.stringify({ title: '新对话', model }),
+    body: JSON.stringify({ title: '新对话' }),
   })
+  clearConversationDataCache(data.conversation?.id)
   await loadConversations()
   await switchConversation(data.conversation.id)
 }
 
 async function switchConversation(id) {
-  const data = await api(`/api/conversations/${id}`)
+  if (currentConversation?.id === id) return
+  saveCurrentConversationScroll()
+  const seq = ++switchConversationSeq
+  const target = conversations.find((conversation) => conversation.id === id)
+  const cached = conversationDataCache.get(id)
+  if (cached) {
+    isConversationLoading = false
+    loadingConversationId = null
+    refs.title.textContent = cached.conversation?.title || target?.title || '新对话'
+    applyConversationData(cached, id)
+    setComposerDisabled(false, id)
+    return
+  }
+
+  isConversationLoading = true
+  setComposerDisabled(true)
+  loadingConversationId = id
+  refs.title.textContent = target?.title || '加载中...'
+  renderSidebar()
+  renderMessagesLoading()
+  try {
+    const data = await fetchConversationData(id)
+    if (seq !== switchConversationSeq) return
+    applyConversationData(data, id)
+  } catch (err) {
+    if (seq !== switchConversationSeq) return
+    refs.messages.innerHTML = `<div id="empty-state" class="danger">${escHtml(err.message)}</div>`
+  } finally {
+    if (seq === switchConversationSeq) {
+      isConversationLoading = false
+      loadingConversationId = null
+      setComposerDisabled(false)
+      renderSidebar()
+    }
+  }
+}
+
+function applyConversationData(data, id = data?.conversation?.id) {
+  if (currentConversation?.id === id) saveCurrentConversationScroll()
   currentConversation = data.conversation
   messages = data.messages || []
-  refs.title.textContent = currentConversation.title || '新对话'
-  LS.set('activeConversationId', id)
-  if (currentConversation.model) refs.model.value = currentConversation.model
+  refs.title.textContent = currentConversation?.title || '新对话'
+  if (id) LS.set('activeConversationId', id)
   renderSidebar()
-  renderMessages(messages)
+  renderMessages(messages, { scrollMode: 'restore', conversationId: id })
   if (window.innerWidth <= 720) closeSidebar()
 }
 
-function renderMessages(items) {
-  refs.messages.innerHTML = ''
+function renderMessagesLoading() {
+  refs.messages.innerHTML = '<div id="empty-state">加载中...</div>'
+}
+
+function renderMessages(items, { scrollMode = 'bottom', conversationId = currentConversation?.id } = {}) {
+  const previousTop = refs.messages.scrollTop
+  const fragment = document.createDocumentFragment()
   if (!items.length) {
     refs.messages.innerHTML = '<div id="empty-state">开始对话</div>'
     return
   }
-  for (const msg of items) appendMessage(msg, false)
-  scrollToBottom()
+  for (const msg of items) fragment.appendChild(createMessageElement(msg))
+  refs.messages.replaceChildren(fragment)
+  applySyntaxHighlighting(refs.messages)
+  applyMessageScroll(scrollMode, conversationId, previousTop)
+}
+
+function ensureMessageViewportReady() {
+  const empty = refs.messages.querySelector('#empty-state')
+  if (empty) refs.messages.replaceChildren()
 }
 
 function appendMessage(msg, scroll = true) {
+  ensureMessageViewportReady()
+  const row = createMessageElement(msg)
+  refs.messages.appendChild(row)
+  applySyntaxHighlighting(row)
+  if (scroll) scrollToBottom()
+  return row.querySelector('.bubble')
+}
+
+function isPendingAssistantMessage(msg) {
+  return msg?.role === 'assistant' && !serializeMessageContent(msg.content).trim() && Boolean(msg.conversationId) && streamingConversationIds.has(msg.conversationId)
+}
+
+function renderPendingAssistantBubble() {
+  return '<span style="color:var(--text2);font-style:italic">思考中</span><span class="cursor"></span>'
+}
+
+function createMessageElement(msg) {
   const row = document.createElement('div')
   row.className = `msg-row ${msg.role}`
+  if (editingMessageId && msg.id === editingMessageId) row.classList.add('editing')
+  if (msg.id) row.dataset.messageId = msg.id
+  const head = document.createElement('div')
+  head.className = 'msg-head'
   const label = document.createElement('div')
   label.className = 'msg-label'
   label.textContent = msg.role === 'user' ? '你' : '助手'
+  head.appendChild(label)
+  const metaText = formatMessageMeta(msg)
+  if (metaText) {
+    const meta = document.createElement('div')
+    meta.className = 'msg-meta'
+    meta.textContent = metaText
+    head.appendChild(meta)
+  }
   const bubble = document.createElement('div')
   bubble.className = 'bubble'
-  if (msg.role === 'user') {
-    bubble.innerHTML = renderUserContent(msg.content)
+  if (editingMessageId && msg.role === 'user' && msg.id === editingMessageId) {
+    bubble.appendChild(createEditBox(msg))
   } else {
-    bubble.innerHTML = marked.parse(String(msg.content || ''))
+    bubble.innerHTML = msg.role === 'user'
+      ? renderUserContent(msg.content)
+      : isPendingAssistantMessage(msg)
+        ? renderPendingAssistantBubble()
+        : renderMarkdown(msg.content)
   }
-  row.append(label, bubble)
-  refs.messages.appendChild(row)
-  if (scroll) scrollToBottom()
-  return bubble
+  row.append(head, bubble)
+  const actions = document.createElement('div')
+  actions.className = 'msg-actions'
+  const copy = document.createElement('button')
+  copy.type = 'button'
+  copy.className = 'msg-action'
+  copy.title = '复制整条气泡内容'
+  copy.textContent = '⧉'
+  copy.onclick = () => copyMessageContent(copy, msg)
+  actions.appendChild(copy)
+  if (msg.role === 'user' && msg.id) {
+    const edit = document.createElement('button')
+    edit.type = 'button'
+    edit.className = 'msg-action'
+    edit.title = '编辑并重新发送'
+    edit.textContent = '✎'
+    edit.onclick = () => startEditMessage(msg.id)
+    actions.appendChild(edit)
+  }
+  row.appendChild(actions)
+  return row
+}
+
+function formatMessageMeta(msg) {
+  return ''
 }
 
 function renderUserContent(content) {
-  if (!Array.isArray(content)) return `<p>${escHtml(content || '')}</p>`
+  if (!Array.isArray(content)) return renderMarkdown(content || '')
   return content.map((part) => {
-    if (part.type === 'text') return `<p>${escHtml(part.text || '')}</p>`
-    if (part.type === 'image_url') return `<img src="${escAttr(part.image_url?.url || '')}" />`
+    if (part.type === 'text') return renderMarkdown(part.text || '')
+    if (part.type === 'image_url') return `<img src="${escAttr(part.image_url?.url || '')}" alt="${escAttr(part.alt_text || '')}" />`
     return ''
   }).join('')
+}
+
+function createEditBox(msg) {
+  const box = document.createElement('div')
+  box.className = 'edit-box'
+  const textarea = document.createElement('textarea')
+  textarea.value = extractEditableText(msg.content)
+  const actions = document.createElement('div')
+  actions.className = 'edit-actions'
+  const cancel = document.createElement('button')
+  cancel.type = 'button'
+  cancel.className = 'secondary'
+  cancel.textContent = '取消'
+  cancel.onclick = () => cancelEditMessage()
+  const submit = document.createElement('button')
+  submit.type = 'button'
+  submit.className = 'primary'
+  submit.textContent = '重新发送'
+  submit.onclick = () => submitEditedMessage(msg, textarea.value)
+  actions.append(cancel, submit)
+  box.append(textarea, actions)
+  setTimeout(() => {
+    textarea.focus()
+    textarea.selectionStart = textarea.value.length
+    textarea.selectionEnd = textarea.value.length
+  }, 0)
+  return box
+}
+
+function extractEditableText(content) {
+  if (Array.isArray(content)) return serializeMessageContent(content)
+  return String(content || '')
+}
+
+function replaceUserTextInContent(content, text) {
+  return buildMessageContentFromMarkdown(text)
 }
 
 function scrollToBottom() {
   refs.messages.scrollTo({ top: refs.messages.scrollHeight, behavior: 'smooth' })
 }
 
+function saveCurrentConversationScroll() {
+  if (!currentConversation?.id) return
+  conversationScrollPositions.set(currentConversation.id, refs.messages.scrollTop)
+}
+
+function applyMessageScroll(mode, conversationId, previousTop = refs.messages.scrollTop) {
+  if (mode === 'none') return
+  if (mode === 'preserve') {
+    refs.messages.scrollTop = previousTop
+    return
+  }
+  if (mode === 'restore' && conversationId && conversationScrollPositions.has(conversationId)) {
+    refs.messages.scrollTo({ top: conversationScrollPositions.get(conversationId), behavior: 'auto' })
+    return
+  }
+  refs.messages.scrollTo({ top: refs.messages.scrollHeight, behavior: 'auto' })
+}
+
 async function sendMessage() {
-  if (isStreaming) return
+  if (isConversationLoading || streamingConversationIds.has(currentConversation?.id)) return
   const text = refs.input.value.trim()
-  if (!text && !pendingImages.length) return
+  const content = buildMessageContentFromMarkdown(refs.input.value)
+  if (!hasEditableContent(content)) return
   const providerId = getSelectedProvider()?.id || ''
   if (!providerId) return setStatus('请联系管理员配置全局 Provider')
-  if (!refs.model.value) return setStatus('请先选择模型')
   if (!currentConversation) await newConversation()
 
-  let content = text
-  if (pendingImages.length) {
-    content = []
-    if (text) content.push({ type: 'text', text })
-    for (const img of pendingImages) content.push({ type: 'image_url', image_url: { url: img.serverUrl } })
-  }
+  const sourceConversation = currentConversation
+  const sourceConversationId = sourceConversation?.id
+  if (!sourceConversationId) return setStatus('当前对话不可用，请重试')
 
   const userMsg = { role: 'user', content }
+  const assistantMsg = { role: 'assistant', content: '', conversationId: sourceConversationId }
+  const streamMessages = [...messages, userMsg, assistantMsg]
+  messages = streamMessages
+  updateConversationDataCache(sourceConversation, streamMessages)
   appendMessage(userMsg)
   refs.input.value = ''
   refs.input.style.height = ''
-  pendingImages = []
-  renderImagePreviews()
 
-  const assistantMsg = { role: 'assistant', content: '' }
   const bubble = appendMessage(assistantMsg)
-  bubble.innerHTML = '<span style="color:var(--text2);font-style:italic">思考中</span><span class="cursor"></span>'
+  bubble.innerHTML = renderPendingAssistantBubble()
 
-  isStreaming = true
-  refs.send.disabled = true
+  streamingConversationIds.add(sourceConversationId)
+  const controller = new AbortController()
+  streamControllers.set(sourceConversationId, controller)
+  setComposerDisabled(false, sourceConversationId)
   setStatus('')
   try {
-    const res = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
-      body: JSON.stringify({
-        conversationId: currentConversation.id,
-        providerId,
-        model: refs.model.value,
-        message: { role: 'user', content },
-        skillId: activeSkillId,
-        stream: true,
-      }),
+    const { raw, stopped } = await streamAssistantResponse('/api/chat', {
+      conversationId: sourceConversationId,
+      providerId,
+      message: { role: 'user', content },
+      skillId: activeSkillId,
+      stream: true,
+    }, bubble, controller.signal, (partial) => {
+      assistantMsg.content = partial
+      updateConversationDataCache(sourceConversation, streamMessages)
     })
-    if (!res.ok) {
-      let message = `HTTP ${res.status}`
-      try { message = (await res.json()).error || message } catch {}
-      throw new Error(message)
+    assistantMsg.content = raw
+    updateConversationDataCache(sourceConversation, streamMessages)
+    if (currentConversation?.id === sourceConversationId) {
+      bubble.innerHTML = raw ? renderMarkdown(raw) : '<span style="color:var(--text2);font-style:italic">已停止</span>'
+      applySyntaxHighlighting(bubble)
     }
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let raw = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop()
-      for (const line of lines) {
-        if (!line.startsWith('data: ')) continue
-        const payload = line.slice(6).trim()
-        if (!payload || payload === '[DONE]') continue
-        try {
-          const chunk = JSON.parse(payload)
-          raw += chunk.choices?.[0]?.delta?.content || ''
-          bubble.innerHTML = marked.parse(raw) + '<span class="cursor"></span>'
-          scrollToBottom()
-        } catch {}
-      }
+    if (raw) {
+      if (currentConversation?.id === sourceConversationId) await refreshConversationDataById(sourceConversationId, { render: true })
+      else await refreshConversationDataById(sourceConversationId, { render: false })
+    } else if (stopped) {
+      streamMessages.pop()
+      messages = currentConversation?.id === sourceConversationId ? streamMessages : messages
+      updateConversationDataCache(sourceConversation, streamMessages)
+      if (currentConversation?.id === sourceConversationId) renderMessages(streamMessages, { scrollMode: 'bottom' })
     }
-    bubble.innerHTML = marked.parse(raw)
-    LS.set('lastModel', refs.model.value)
-    await loadConversations()
-    await switchConversation(currentConversation.id)
+    loadConversations()
   } catch (err) {
-    bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+    assistantMsg.content = err.message
+    updateConversationDataCache(sourceConversation, streamMessages)
+    if (currentConversation?.id === sourceConversationId) {
+      bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+    }
   } finally {
-    isStreaming = false
-    refs.send.disabled = false
+    streamingConversationIds.delete(sourceConversationId)
+    streamControllers.delete(sourceConversationId)
+    setComposerDisabled(isConversationLoading)
   }
 }
 
-async function uploadImage(file) {
-  const fd = new FormData()
-  fd.append('file', file)
-  const json = await api('/api/upload', { method: 'POST', body: fd })
-  return json.url
+async function streamAssistantResponse(url, payload, bubble, signal, onChunk) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authToken}` },
+    body: JSON.stringify(payload),
+    signal,
+  })
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    try { message = (await res.json()).error || message } catch {}
+    throw new Error(message)
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let raw = ''
+  while (true) {
+    let result
+    try {
+      result = await reader.read()
+    } catch (err) {
+      if (signal?.aborted) return { raw, stopped: true }
+      throw err
+    }
+    const { done, value } = result
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop()
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue
+      const payloadText = line.slice(6).trim()
+      if (!payloadText || payloadText === '[DONE]') continue
+      try {
+        const chunk = JSON.parse(payloadText)
+        raw += chunk.choices?.[0]?.delta?.content || ''
+        if (typeof onChunk === 'function') onChunk(raw)
+        if (bubble?.isConnected) {
+          bubble.innerHTML = renderMarkdown(raw) + '<span class="cursor"></span>'
+          applySyntaxHighlighting(bubble)
+          scrollToBottom()
+        }
+      } catch {}
+    }
+  }
+  return { raw, stopped: false }
 }
 
-async function addImageFile(file) {
-  const dataUrl = await readAsDataURL(file)
-  const serverUrl = await uploadImage(file)
-  pendingImages.push({ dataUrl, serverUrl })
-  renderImagePreviews()
+async function refreshCurrentConversationData({ render = false } = {}) {
+  if (!currentConversation?.id) return null
+  return refreshConversationDataById(currentConversation.id, { render })
 }
 
-function renderImagePreviews() {
-  refs.previews.innerHTML = ''
-  pendingImages.forEach((img, index) => {
-    const wrap = document.createElement('div')
-    wrap.className = 'img-preview-wrap'
-    wrap.innerHTML = `<img src="${escAttr(img.dataUrl)}" /><button class="remove-img">×</button>`
-    wrap.querySelector('button').onclick = () => { pendingImages.splice(index, 1); renderImagePreviews() }
-    refs.previews.appendChild(wrap)
+function startEditMessage(id) {
+  if (isConversationLoading || streamingConversationIds.has(currentConversation?.id)) return
+  editingMessageId = id
+  renderMessages(messages, { scrollMode: 'preserve' })
+}
+
+function cancelEditMessage() {
+  editingMessageId = null
+  renderMessages(messages, { scrollMode: 'preserve' })
+}
+
+function buildMessagesThroughEditedMessage(items, messageId, content) {
+  const index = items.findIndex((item) => item.id === messageId && item.role === 'user')
+  if (index < 0) return null
+  const next = items.slice(0, index + 1)
+  next[index] = { ...next[index], content }
+  return next
+}
+
+async function submitEditedMessage(msg, text) {
+  if (isConversationLoading || streamingConversationIds.has(currentConversation?.id) || !currentConversation?.id || !msg?.id) return
+  const providerId = getSelectedProvider()?.id || ''
+  setStatus('')
+  const nextText = text.trim()
+  if (!nextText && !Array.isArray(msg.content)) return setStatus('消息内容不能为空')
+  let freshData
+  try {
+    freshData = await refreshCurrentConversationData()
+  } catch (err) {
+    return setStatus(err.message)
+  }
+  const freshMessages = freshData?.messages || messages
+  const freshMsg = freshMessages.find((item) => item.id === msg.id && item.role === 'user')
+  if (!freshMsg) {
+    editingMessageId = null
+    renderMessages(freshMessages, { scrollMode: 'bottom' })
+    return setStatus('这条消息已经变化，请重新选择要编辑的消息')
+  }
+  const content = replaceUserTextInContent(freshMsg.content, nextText)
+  if (!hasEditableContent(content)) return setStatus('消息内容不能为空')
+  const nextMessages = buildMessagesThroughEditedMessage(freshMessages, msg.id, content)
+  if (!nextMessages) return setStatus('这条消息已经变化，请重新选择要编辑的消息')
+
+  const sourceConversation = currentConversation
+  const sourceConversationId = currentConversation.id
+  editingMessageId = null
+  messages = nextMessages
+  const pendingAssistant = { role: 'assistant', content: '', conversationId: sourceConversationId }
+  messages.push(pendingAssistant)
+  const streamMessages = [...messages]
+  updateConversationDataCache(sourceConversation, streamMessages)
+  renderMessages(messages, { scrollMode: 'bottom' })
+  const bubble = refs.messages.querySelector('.msg-row.assistant:last-child .bubble')
+  if (!bubble) return setStatus('重新生成失败：未找到回复气泡')
+  bubble.innerHTML = renderPendingAssistantBubble()
+
+  streamingConversationIds.add(sourceConversationId)
+  const controller = new AbortController()
+  streamControllers.set(sourceConversationId, controller)
+  setComposerDisabled(false, sourceConversationId)
+  setStatus('')
+  try {
+    const { raw, stopped } = await streamAssistantResponse(`/api/messages/${encodeURIComponent(msg.id)}/regenerate`, {
+      conversationId: sourceConversationId,
+      providerId,
+      message: { role: 'user', content },
+      skillId: activeSkillId,
+      stream: true,
+    }, bubble, controller.signal, (partial) => {
+      pendingAssistant.content = partial
+      updateConversationDataCache(sourceConversation, streamMessages)
+    })
+    pendingAssistant.content = raw
+    updateConversationDataCache(sourceConversation, streamMessages)
+    if (currentConversation?.id === sourceConversationId) {
+      bubble.innerHTML = raw ? renderMarkdown(raw) : '<span style="color:var(--text2);font-style:italic">已停止</span>'
+      applySyntaxHighlighting(bubble)
+    }
+    if (raw) {
+      if (currentConversation?.id === sourceConversationId) await refreshConversationDataById(sourceConversationId, { render: true })
+      else await refreshConversationDataById(sourceConversationId, { render: false })
+    } else if (stopped) {
+      streamMessages.pop()
+      messages = currentConversation?.id === sourceConversationId ? streamMessages : messages
+      updateConversationDataCache(sourceConversation, streamMessages)
+      if (currentConversation?.id === sourceConversationId) renderMessages(streamMessages, { scrollMode: 'bottom' })
+    }
+    loadConversations()
+  } catch (err) {
+    pendingAssistant.content = err.message
+    updateConversationDataCache(sourceConversation, streamMessages)
+    if (currentConversation?.id === sourceConversationId) {
+      bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+      applySyntaxHighlighting(bubble)
+    }
+  } finally {
+    streamingConversationIds.delete(sourceConversationId)
+    streamControllers.delete(sourceConversationId)
+    setComposerDisabled(isConversationLoading)
+  }
+}
+
+function hasEditableContent(content) {
+  if (typeof content === 'string') return content.trim().length > 0
+  if (!Array.isArray(content)) return Boolean(content)
+  return content.some((part) => {
+    if (part.type === 'text') return String(part.text || '').trim().length > 0
+    if (part.type === 'image_url') return Boolean(part.image_url?.url)
+    return false
   })
 }
 
+function serializeMessageContent(content) {
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content.map((part) => {
+      if (part?.type === 'text') return String(part.text || '')
+      if (part?.type === 'image_url') return `![${part.alt_text || ''}](${part.image_url?.url || ''})`
+      return ''
+    }).filter(Boolean).join('\n\n')
+  }
+  if (content && typeof content === 'object') return JSON.stringify(content, null, 2)
+  return String(content || '')
+}
+
+function createImagePlaceholderUrl(id) {
+  return `litechat-image://${id}`
+}
+
+function parseDataUrlMediaType(dataUrl) {
+  const match = String(dataUrl || '').match(/^data:([^;,]+)[;,]/i)
+  return match?.[1] || 'image/png'
+}
+
+function registerPastedImage({ alt = '', dataUrl = '' } = {}) {
+  const id = crypto.randomUUID()
+  pastedImageRegistry.set(id, {
+    alt: String(alt || '').trim(),
+    dataUrl: String(dataUrl || ''),
+    mediaType: parseDataUrlMediaType(dataUrl),
+  })
+  return createImagePlaceholderUrl(id)
+}
+
+function looksLikeMarkdown(text) {
+  const value = String(text || '')
+  return /(^|\n)\s{0,3}(#{1,6}\s|>\s|[-*+]\s|\d+\.\s|```|\|.+\|)|!\[[^\]]*]\([^)]+\)|\[[^\]]+]\([^)]+\)/m.test(value)
+}
+
+function normalizeMarkdownSpacing(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function prefixLines(text, prefix) {
+  return String(text || '')
+    .split('\n')
+    .map((line) => `${prefix}${line}`)
+    .join('\n')
+}
+
+function renderHtmlNodesToMarkdown(nodes, options = {}) {
+  return nodes.map((node) => renderHtmlNodeToMarkdown(node, options)).join(options.inline ? '' : '')
+}
+
+function tableToMarkdown(table) {
+  const rows = Array.from(table.querySelectorAll('tr'))
+    .map((row) => Array.from(row.children)
+      .filter((cell) => ['TH', 'TD'].includes(cell.tagName))
+      .map((cell) => normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(cell.childNodes), { inline: true }).replace(/\n+/g, ' '))))
+    .filter((cells) => cells.length)
+
+  if (!rows.length) return ''
+  const columnCount = rows.reduce((max, row) => Math.max(max, row.length), 0)
+  const normalizedRows = rows.map((row) => {
+    const next = row.slice()
+    while (next.length < columnCount) next.push('')
+    return next
+  })
+  const header = normalizedRows[0]
+  const divider = new Array(columnCount).fill('---')
+  return [
+    `| ${header.join(' | ')} |`,
+    `| ${divider.join(' | ')} |`,
+    ...normalizedRows.slice(1).map((row) => `| ${row.join(' | ')} |`),
+  ].join('\n')
+}
+
+function renderHtmlNodeToMarkdown(node, options = {}) {
+  if (!node) return ''
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = node.textContent || ''
+    return options.preserveWhitespace ? text : text.replace(/\s+/g, ' ')
+  }
+  if (node.nodeType !== Node.ELEMENT_NODE) return ''
+
+  const tag = node.tagName.toLowerCase()
+  if (tag === 'script' || tag === 'style' || tag === 'noscript') return ''
+  if (tag === 'br') return '\n'
+  if (tag === 'hr') return '\n---\n'
+  if (tag === 'img') {
+    const alt = node.getAttribute('alt') || ''
+    const src = node.getAttribute('src') || node.getAttribute('data-src') || ''
+    if (src.startsWith('data:image/')) {
+      const placeholderUrl = registerPastedImage({ alt, dataUrl: src })
+      return `![${alt}](${placeholderUrl})`
+    }
+    return src ? `![${alt}](${src})` : (alt ? `[image: ${alt}]` : '[image]')
+  }
+  if (tag === 'a') {
+    const href = node.getAttribute('href') || ''
+    const label = normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(node.childNodes), { inline: true })) || href
+    return href ? `[${label}](${href})` : label
+  }
+  if (tag === 'code' && node.parentElement?.tagName !== 'PRE') {
+    const code = node.textContent || ''
+    return `\`${code.replace(/`/g, '\\`')}\``
+  }
+  if (tag === 'pre') {
+    const code = (node.textContent || '').trimEnd()
+    return code ? `\n\`\`\`\n${code}\n\`\`\`\n` : ''
+  }
+  if (tag === 'table') {
+    const markdownTable = tableToMarkdown(node)
+    return markdownTable ? `\n${markdownTable}\n` : ''
+  }
+  if (tag === 'blockquote') {
+    const text = normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(node.childNodes), { block: true }))
+    return text ? `\n${prefixLines(text, '> ')}\n` : ''
+  }
+  if (tag === 'ul' || tag === 'ol') {
+    const items = Array.from(node.children)
+      .filter((child) => child.tagName === 'LI')
+      .map((child, index) => {
+        const prefix = tag === 'ol' ? `${index + 1}. ` : '- '
+        const text = normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(child.childNodes), { block: true }))
+        return text ? `${prefix}${text.replace(/\n/g, `\n${' '.repeat(prefix.length)}`)}` : ''
+      })
+      .filter(Boolean)
+    return items.length ? `\n${items.join('\n')}\n` : ''
+  }
+  if (/^h[1-6]$/.test(tag)) {
+    const level = Number(tag.slice(1))
+    const text = normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(node.childNodes), { inline: true }))
+    return text ? `\n${'#'.repeat(level)} ${text}\n` : ''
+  }
+  if (tag === 'p' || tag === 'div' || tag === 'section' || tag === 'article' || tag === 'header' || tag === 'footer') {
+    const text = normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(node.childNodes), { block: true }))
+    return text ? `\n${text}\n` : ''
+  }
+
+  return renderHtmlNodesToMarkdown(Array.from(node.childNodes), options)
+}
+
+function htmlToMarkdown(html) {
+  try {
+    const doc = new DOMParser().parseFromString(String(html || ''), 'text/html')
+    return normalizeMarkdownSpacing(renderHtmlNodesToMarkdown(Array.from(doc.body.childNodes), { block: true }))
+  } catch {
+    return ''
+  }
+}
+
+function clipboardToComposerText(clipboardData) {
+  const plainText = String(clipboardData?.getData('text/plain') || '')
+  const html = String(clipboardData?.getData('text/html') || '')
+  if (plainText.trim() && looksLikeMarkdown(plainText)) return plainText
+  if (html.trim()) {
+    const markdown = htmlToMarkdown(html)
+    if (markdown) return markdown
+  }
+  return plainText
+}
+
+function dataUrlToContentPart(dataUrl, altText = '') {
+  return {
+    type: 'image_url',
+    alt_text: String(altText || '').trim(),
+    image_url: {
+      url: String(dataUrl || ''),
+      media_type: parseDataUrlMediaType(dataUrl),
+    },
+  }
+}
+
+function imageMarkdownToContentPart(altText, rawUrl) {
+  const url = String(rawUrl || '').trim()
+  if (!url) return null
+  const placeholderMatch = url.match(/^litechat-image:\/\/(.+)$/)
+  if (placeholderMatch) {
+    const cached = pastedImageRegistry.get(placeholderMatch[1])
+    if (!cached?.dataUrl) return null
+    return dataUrlToContentPart(cached.dataUrl, altText || cached.alt)
+  }
+  if (url.startsWith('data:image/')) return dataUrlToContentPart(url, altText)
+  return {
+    type: 'image_url',
+    alt_text: String(altText || '').trim(),
+    image_url: {
+      url,
+    },
+  }
+}
+
+function buildMessageContentFromMarkdown(source) {
+  const text = String(source || '')
+  const imagePattern = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const parts = []
+  let lastIndex = 0
+  for (const match of text.matchAll(imagePattern)) {
+    const [full, altText, rawUrl] = match
+    const index = match.index ?? 0
+    const before = text.slice(lastIndex, index)
+    if (before) parts.push({ type: 'text', text: before })
+    const imagePart = imageMarkdownToContentPart(altText, rawUrl)
+    if (imagePart) parts.push(imagePart)
+    else if (full) parts.push({ type: 'text', text: full })
+    lastIndex = index + full.length
+  }
+  const tail = text.slice(lastIndex)
+  if (tail) parts.push({ type: 'text', text: tail })
+
+  const normalized = parts
+    .filter((part) => part.type !== 'text' || String(part.text || '').length > 0)
+    .reduce((acc, part) => {
+      if (part.type === 'text' && acc.length && acc.at(-1).type === 'text') {
+        acc.at(-1).text += part.text
+      } else {
+        acc.push(part)
+      }
+      return acc
+    }, [])
+
+  if (!normalized.length) return ''
+  return normalized.some((part) => part.type === 'image_url') ? normalized : text
+}
+
+function insertTextAtCursor(textarea, text) {
+  const value = String(text || '')
+  const start = textarea.selectionStart ?? textarea.value.length
+  const end = textarea.selectionEnd ?? textarea.value.length
+  textarea.setRangeText(value, start, end, 'end')
+  textarea.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
 function readAsDataURL(file) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = (event) => resolve(event.target.result)
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error || new Error('读取图片失败'))
     reader.readAsDataURL(file)
   })
 }
 
-function clearAdminProviderForm() {
-  $('admin-provider-id').value = ''
-  $('admin-provider-name').value = ''
-  $('admin-provider-base-url').value = ''
-  $('admin-provider-api-key').value = ''
-  $('admin-provider-default-model').value = ''
-}
-
-async function loadAdminProviderModels() {
-  const providerId = $('admin-provider-id').value.trim()
-  const baseUrl = $('admin-provider-base-url').value.trim()
-  const statusEl = $('admin-model-load-status')
-  const selectEl = $('admin-provider-default-model-select')
-  const inputEl = $('admin-provider-default-model')
-  const btn = $('admin-load-models-btn')
-
-  if (!baseUrl) {
-    statusEl.textContent = '请先填写 Base URL'
-    statusEl.style.display = 'block'
-    return
-  }
-
-  btn.disabled = true
-  btn.textContent = '加载中...'
-  statusEl.textContent = ''
-  statusEl.style.display = 'none'
-
+async function copyMessageContent(button, msg) {
+  const raw = serializeMessageContent(msg?.content)
   try {
-    let models = []
-    if (providerId) {
-      // 已存在的 provider，用后端接口
-      const data = await api(`/api/admin/providers/${providerId}/models`)
-      models = data.models || []
-    } else {
-      // 新 provider，直接调 OpenAI compatible endpoint
-      const apiKey = $('admin-provider-api-key').value.trim()
-      const url = baseUrl.replace(/\/$/, '') + '/v1/models'
-      const headers = { 'Content-Type': 'application/json' }
-      if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
-      let resp = await fetch(url, { headers })
-      if (!resp.ok) {
-        // fallback: try without /v1 prefix
-        const fallbackUrl = baseUrl.replace(/\/$/, '') + '/models'
-        resp = await fetch(fallbackUrl, { headers })
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      }
-      const json = await resp.json()
-      models = (json.data || json.models || []).map((m) => (typeof m === 'string' ? m : m.id || m.name || '')).filter(Boolean)
-    }
-
-    const currentVal = inputEl.value.trim()
-    selectEl.innerHTML = '<option value="">-- 请选择模型 --</option>'
-      + models.map((m) => `<option value="${escAttr(m)}"${m === currentVal ? ' selected' : ''}>${escHtml(m)}</option>`).join('')
-
-    if (models.length === 0) {
-      statusEl.textContent = '未获取到模型列表'
-      statusEl.style.display = 'block'
-    } else {
-      statusEl.textContent = `✓ 已加载 ${models.length} 个模型`
-      statusEl.style.color = 'var(--text2)'
-      statusEl.style.display = 'block'
-    }
-  } catch (err) {
-    statusEl.textContent = `⚠ 加载失败：${err.message}（可手动输入）`
-    statusEl.style.display = 'block'
-  } finally {
-    btn.disabled = false
-    btn.textContent = '⟳ 刷新'
+    await writeClipboardText(raw)
+    button.textContent = '✓'
+    setTimeout(() => { button.textContent = '⧉' }, 1200)
+  } catch {
+    button.textContent = '!'
+    setTimeout(() => { button.textContent = '⧉' }, 1200)
   }
-}
-
-function renderAdminProviders() {
-  refs.adminProviderList.innerHTML = adminProviders.length ? '' : '<div id="empty-state">暂无全局 Provider</div>'
-  for (const provider of adminProviders) {
-    const row = document.createElement('div')
-    row.className = 'admin-provider-row'
-    row.innerHTML = `
-      <div>
-        <div class="admin-provider-name">${escHtml(provider.name)}</div>
-        <div class="admin-provider-meta">${escHtml(provider.baseUrl)}${provider.defaultModel ? ' · ' + escHtml(provider.defaultModel) : ''}${provider.hasApiKey ? ' · 已配置 Key' : ''}</div>
-      </div>
-      <div class="admin-provider-actions">
-        <button class="secondary" type="button">编辑</button>
-        <button class="secondary danger" type="button">删除</button>
-      </div>`
-    const [editBtn, deleteBtn] = row.querySelectorAll('button')
-    editBtn.onclick = () => {
-      $('admin-provider-id').value = provider.id
-      $('admin-provider-name').value = provider.name || ''
-      $('admin-provider-base-url').value = provider.baseUrl || ''
-      $('admin-provider-api-key').value = ''
-      $('admin-provider-default-model').value = provider.defaultModel || ''
-      // 自动加载模型列表
-      setTimeout(loadAdminProviderModels, 100)
-    }
-    deleteBtn.onclick = async () => {
-      if (!confirm(`删除全局 Provider「${provider.name}」？`)) return
-      await api(`/api/admin/providers/${provider.id}`, { method: 'DELETE' })
-      await loadAdminProviders()
-      await loadProviders()
-    }
-    refs.adminProviderList.appendChild(row)
-  }
-}
-
-async function loadAdminProviders() {
-  const data = await api('/api/admin/providers')
-  adminProviders = data.providers || []
-  renderAdminProviders()
-}
-
-function clearAdminSkillForm() {
-  $('admin-skill-id').value = ''
-  $('admin-skill-clawhub-slug').value = ''
-  $('admin-skill-icon').value = '🤖'
-  $('admin-skill-name').value = ''
-  $('admin-skill-desc').value = ''
-  $('admin-skill-prompt').value = ''
-  $('admin-skill-order').value = '0'
-  $('admin-skill-active').checked = true
-  $('clawhub-attachment-preview').classList.add('hidden')
-  $('clawhub-attachment-preview').textContent = ''
-}
-
-function formatBytes(bytes) {
-  const size = Number(bytes) || 0
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / 1024 / 1024).toFixed(1)} MB`
-}
-
-function renderAttachmentPreview(files = []) {
-  const preview = $('clawhub-attachment-preview')
-  if (!files.length) {
-    preview.classList.add('hidden')
-    preview.textContent = ''
-    return
-  }
-  const shown = files.slice(0, 3).join(', ')
-  const extra = files.length > 3 ? `, +${files.length - 3} 个` : ''
-  preview.textContent = `📎 附带 ${files.length} 个附件文件：${shown}${extra}`
-  preview.classList.remove('hidden')
-}
-
-async function toggleAdminSkillFiles(skill, row) {
-  const existing = row.querySelector('.skill-files-list')
-  if (existing) {
-    existing.remove()
-    return
-  }
-
-  const list = document.createElement('div')
-  list.className = 'skill-files-list'
-  list.innerHTML = '<div class="admin-skill-meta">正在加载附件…</div>'
-  list.onclick = (e) => e.stopPropagation()
-  row.appendChild(list)
-  try {
-    if (!adminSkillFiles[skill.id]) {
-      const data = await api(`/api/admin/skills/${skill.id}/files`)
-      adminSkillFiles[skill.id] = data.files || []
-    }
-    const files = adminSkillFiles[skill.id]
-    list.innerHTML = files.length
-      ? files.map((file) => `
-          <div class="skill-file-item">
-            <span class="skill-file-path" title="${escAttr(file.relative_path)}">${escHtml(file.relative_path)}</span>
-            <span>${escHtml(formatBytes(file.file_size))}</span>
-          </div>
-        `).join('')
-      : '<div class="admin-skill-meta">暂无附件文件</div>'
-  } catch (err) {
-    list.innerHTML = `<div class="admin-skill-meta danger">附件加载失败：${escHtml(err.message)}</div>`
-  }
-}
-
-function renderAdminSkillList() {
-  refs.adminSkillList.innerHTML = adminSkills.length ? '' : '<div id="empty-state">暂无 Skill</div>'
-  for (const skill of adminSkills) {
-    const row = document.createElement('div')
-    row.className = `admin-skill-row${skill.files_count > 0 ? ' has-files' : ''}`
-    const filesBadge = skill.files_count > 0 ? `<button class="skill-files-badge" type="button" title="查看附件文件">📎 ${escHtml(skill.files_count)}</button>` : ''
-    row.innerHTML = `
-      <div>
-        <div class="admin-skill-name">${escHtml(skill.icon || '🤖')} ${escHtml(skill.name)}</div>
-        <div class="admin-skill-meta">${skill.is_active ? '已启用' : '已停用'} · 排序 ${escHtml(skill.sort_order ?? 0)}${skill.description ? ' · ' + escHtml(skill.description) : ''}</div>
-      </div>
-      <div class="admin-skill-actions">
-        ${filesBadge}
-        <button class="secondary" type="button">编辑</button>
-        <button class="secondary danger" type="button">删除</button>
-      </div>`
-    const filesBtn = row.querySelector('.skill-files-badge')
-    const editBtn = row.querySelector('.admin-skill-actions .secondary:not(.danger)')
-    const deleteBtn = row.querySelector('.admin-skill-actions .danger')
-    if (filesBtn) {
-      filesBtn.onclick = async (e) => {
-        e.stopPropagation()
-        await toggleAdminSkillFiles(skill, row)
-      }
-      row.onclick = async () => toggleAdminSkillFiles(skill, row)
-    }
-    editBtn.onclick = (e) => {
-      e.stopPropagation()
-      $('admin-skill-id').value = skill.id
-      $('admin-skill-clawhub-slug').value = ''
-      renderAttachmentPreview([])
-      $('admin-skill-icon').value = skill.icon || '🤖'
-      $('admin-skill-name').value = skill.name || ''
-      $('admin-skill-desc').value = skill.description || ''
-      $('admin-skill-prompt').value = skill.system_prompt || ''
-      $('admin-skill-order').value = skill.sort_order ?? 0
-      $('admin-skill-active').checked = Boolean(skill.is_active)
-    }
-    deleteBtn.onclick = async (e) => {
-      e.stopPropagation()
-      if (!confirm(`删除 Skill「${skill.name}」？`)) return
-      try {
-        await api(`/api/admin/skills/${skill.id}`, { method: 'DELETE' })
-        await loadAdminSkills()
-        await loadSkills()
-      } catch (err) {
-        alert(err.message)
-      }
-    }
-    refs.adminSkillList.appendChild(row)
-  }
-}
-
-async function loadAdminSkills() {
-  const data = await api('/api/admin/skills')
-  adminSkills = data.skills || []
-  adminSkillFiles = {}
-  renderAdminSkillList()
-}
-
-// ClawHub 搜索
-async function clawHubSearch(q) {
-  const btn = $('clawhub-search-btn')
-  const resultsEl = $('clawhub-results')
-  btn.disabled = true
-  btn.textContent = '搜索中...'
-  resultsEl.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:13px;">正在搜索…</div>'
-  resultsEl.classList.remove('hidden')
-  try {
-    const data = await api(`/api/admin/skills/clawhub/search?q=${encodeURIComponent(q)}`)
-    if (!data.results?.length) {
-      resultsEl.innerHTML = '<div style="padding:10px;color:var(--text2);font-size:13px;">无结果</div>'
-      return
-    }
-    resultsEl.innerHTML = ''
-    for (const item of data.results) {
-      const div = document.createElement('div')
-      div.className = 'clawhub-result-item'
-      div.innerHTML = `
-        <span class="clawhub-result-slug">${escHtml(item.slug)}</span>
-        <span class="clawhub-result-desc">${escHtml(item.description || '')}</span>
-        <button class="clawhub-import-btn" data-slug="${escAttr(item.slug)}">导入</button>
-      `
-      div.querySelector('.clawhub-import-btn').onclick = async (e) => {
-        e.stopPropagation()
-        const slug = e.target.dataset.slug
-        await clawHubImport(slug)
-      }
-      resultsEl.appendChild(div)
-    }
-  } catch (err) {
-    resultsEl.innerHTML = `<div style="padding:10px;color:var(--danger);font-size:13px;">搜索失败：${escHtml(err.message)}</div>`
-  } finally {
-    btn.disabled = false
-    btn.textContent = '搜索'
-  }
-}
-
-async function clawHubImport(slug) {
-  const resultsEl = $('clawhub-results')
-  const btn = Array.from(resultsEl.querySelectorAll('.clawhub-import-btn')).find((item) => item.dataset.slug === slug)
-  if (btn) { btn.disabled = true; btn.textContent = '加载中…' }
-  try {
-    const data = await api(`/api/admin/skills/clawhub/preview?slug=${encodeURIComponent(slug)}`)
-    $('admin-skill-id').value = ''
-    $('admin-skill-clawhub-slug').value = slug
-    $('admin-skill-icon').value = '⚡'
-    $('admin-skill-name').value = data.name || slug
-    $('admin-skill-desc').value = data.description || ''
-    $('admin-skill-prompt').value = data.system_prompt || ''
-    $('admin-skill-order').value = '0'
-    $('admin-skill-active').checked = true
-    renderAttachmentPreview(data.attachmentFiles || [])
-    resultsEl.classList.add('hidden')
-    $('admin-skill-form').scrollIntoView({ behavior: 'smooth' })
-  } catch (err) {
-    alert(`导入失败：${err.message}`)
-    if (btn) { btn.disabled = false; btn.textContent = '导入' }
-  }
-}
-
-function setAdminTab(tab) {
-  const showSkills = tab === 'skills'
-  refs.adminPaneProviders.classList.toggle('hidden', showSkills)
-  refs.adminPaneSkills.classList.toggle('hidden', !showSkills)
-  refs.adminTabProviders.classList.toggle('active', !showSkills)
-  refs.adminTabSkills.classList.toggle('active', showSkills)
 }
 
 function toggleSidebar() {
+  if (window.innerWidth > 720) {
+    toggleSidebarCollapsed()
+    return
+  }
   const open = refs.sidebar.classList.toggle('open')
   const ov = document.getElementById('sidebar-overlay')
   if (ov) ov.classList.toggle('show', open)
@@ -1012,65 +1566,48 @@ function closeSidebar() {
   if (ov) ov.classList.remove('show')
 }
 
-async function openAdminModal() {
-  if (!currentUser?.isAdmin) return
-  clearAdminProviderForm()
-  clearAdminSkillForm()
-  setAdminTab('providers')
-  refs.adminModal.classList.add('open')
-  await Promise.all([loadAdminProviders(), loadAdminSkills()])
+function toggleSidebarCollapsed() {
+  sidebarCollapsed = !sidebarCollapsed
+  LS.set('sidebarCollapsed', sidebarCollapsed)
+  updateSidebarCollapsedUI()
 }
 
-refs.adminProviderForm.onsubmit = async (event) => {
-  event.preventDefault()
-  const id = $('admin-provider-id').value
-  const body = {
-    name: $('admin-provider-name').value.trim(),
-    baseUrl: $('admin-provider-base-url').value.trim(),
-    defaultModel: $('admin-provider-default-model').value.trim(),
-  }
-  const apiKey = $('admin-provider-api-key').value.trim()
-  if (apiKey || !id) body.apiKey = apiKey
-  await api(id ? `/api/admin/providers/${id}` : '/api/admin/providers', {
-    method: id ? 'PATCH' : 'POST',
-    body: JSON.stringify(body),
-  })
-  clearAdminProviderForm()
-  await loadAdminProviders()
-  await loadProviders()
+function stopCurrentConversationStream() {
+  const conversationId = currentConversation?.id
+  if (!conversationId) return
+  const controller = streamControllers.get(conversationId)
+  if (controller) controller.abort()
 }
 
-refs.adminSkillForm.onsubmit = async (event) => {
-  event.preventDefault()
-  const id = $('admin-skill-id').value
-  const body = {
-    icon: $('admin-skill-icon').value.trim() || '🤖',
-    name: $('admin-skill-name').value.trim(),
-    description: $('admin-skill-desc').value.trim(),
-    system_prompt: $('admin-skill-prompt').value.trim(),
-    sort_order: Number.parseInt($('admin-skill-order').value, 10) || 0,
-    is_active: $('admin-skill-active').checked,
-  }
-  const clawhubSlug = $('admin-skill-clawhub-slug').value.trim()
-  if (!id && clawhubSlug) body.clawhub_slug = clawhubSlug
+
+async function copyCode(btn) {
+  const code = btn.nextElementSibling?.innerText || ''
   try {
-    await api(id ? `/api/admin/skills/${id}` : '/api/admin/skills', {
-      method: id ? 'PATCH' : 'POST',
-      body: JSON.stringify(body),
-    })
-    clearAdminSkillForm()
-    await loadAdminSkills()
-    await loadSkills()
-  } catch (err) {
-    alert(err.message)
-  }
-}
-
-function copyCode(btn) {
-  navigator.clipboard.writeText(btn.nextElementSibling.innerText).then(() => {
+    await writeClipboardText(code)
     btn.textContent = '已复制'
     setTimeout(() => { btn.textContent = '复制' }, 1200)
-  })
+  } catch {
+    btn.textContent = '复制失败'
+    setTimeout(() => { btn.textContent = '复制' }, 1200)
+  }
+}
+
+async function writeClipboardText(text) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  const textarea = document.createElement('textarea')
+  textarea.value = text
+  textarea.setAttribute('readonly', '')
+  textarea.style.position = 'fixed'
+  textarea.style.left = '-9999px'
+  textarea.style.top = '0'
+  document.body.appendChild(textarea)
+  textarea.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(textarea)
+  if (!ok) throw new Error('Copy failed')
 }
 
 function escHtml(value) {
@@ -1087,34 +1624,8 @@ $('logout-btn').onclick = async () => {
   location.reload()
 }
 $('new-chat-btn').onclick = newConversation
-refs.model.onchange = () => LS.set('lastModel', refs.model.value)
-$('admin-btn').onclick = openAdminModal
-$('admin-modal-close').onclick = () => refs.adminModal.classList.remove('open')
-$('admin-provider-reset').onclick = clearAdminProviderForm
-$('admin-load-models-btn').onclick = loadAdminProviderModels
-$('admin-provider-default-model-select').onchange = function() {
-  if (this.value) $('admin-provider-default-model').value = this.value
-}
-$('admin-provider-default-model').oninput = function() {
-  // 如果手动输入，尝试同步 select
-  const select = $('admin-provider-default-model-select')
-  const opt = [...select.options].find(o => o.value === this.value)
-  if (opt) select.value = this.value
-  else select.value = ''
-}
-refs.adminTabProviders.onclick = () => setAdminTab('providers')
-refs.adminTabSkills.onclick = () => setAdminTab('skills')
-$('admin-skill-reset').onclick = clearAdminSkillForm
-$('clawhub-search-btn').onclick = () => {
-  const q = $('clawhub-search-input').value.trim()
-  if (q) clawHubSearch(q)
-}
-$('clawhub-search-input').onkeydown = (e) => {
-  if (e.key === 'Enter') {
-    const q = $('clawhub-search-input').value.trim()
-    if (q) clawHubSearch(q)
-  }
-}
+$('admin-btn').onclick = () => { location.href = '/admin.html' }
+$('code-review-btn').onclick = () => { location.href = '/code-review.html' }
 refs.skillBtn.onclick = (event) => {
   event.stopPropagation()
   refs.skillPicker.classList.toggle('hidden')
@@ -1123,7 +1634,10 @@ refs.skillPicker.onclick = (event) => event.stopPropagation()
 $('toggle-sidebar').onclick = () => toggleSidebar()
 if ($('close-sidebar')) $('close-sidebar').onclick = () => closeSidebar()
 document.getElementById('sidebar-overlay').onclick = closeSidebar
-$('send-btn').onclick = sendMessage
+$('send-btn').onclick = () => {
+  if (streamingConversationIds.has(currentConversation?.id)) stopCurrentConversationStream()
+  else sendMessage()
+}
 refs.input.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() }
 })
@@ -1131,20 +1645,28 @@ refs.input.addEventListener('input', () => {
   refs.input.style.height = 'auto'
   refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
 })
-$('upload-btn').onclick = () => $('file-input').click()
-$('file-input').onchange = async (event) => {
-  for (const file of event.target.files) await addImageFile(file)
-  event.target.value = ''
-}
-document.addEventListener('paste', async (event) => {
-  for (const item of Array.from(event.clipboardData?.items || [])) {
-    if (item.type.startsWith('image/')) {
-      const file = item.getAsFile()
-      if (file) { event.preventDefault(); await addImageFile(file) }
-    }
+refs.input.addEventListener('paste', async (event) => {
+  const clipboardText = clipboardToComposerText(event.clipboardData)
+  const imageFiles = Array.from(event.clipboardData?.items || [])
+    .filter((item) => item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
+  if (!clipboardText && !imageFiles.length) return
+  event.preventDefault()
+  if (clipboardText) insertTextAtCursor(refs.input, clipboardText)
+  const alreadyHasMarkdownImages = /!\[[^\]]*]\([^)]+\)/.test(clipboardText)
+  if (imageFiles.length && (!clipboardText || !alreadyHasMarkdownImages)) {
+    const placeholders = await Promise.all(imageFiles.map(async (file) => {
+      const dataUrl = await readAsDataURL(file)
+      const placeholderUrl = registerPastedImage({ alt: file.name || '', dataUrl })
+      return `![${file.name || 'image'}](${placeholderUrl})`
+    }))
+    const prefix = clipboardText ? '\n\n' : ''
+    insertTextAtCursor(refs.input, `${prefix}${placeholders.join('\n\n')}`)
   }
 })
 document.addEventListener('click', () => refs.skillPicker.classList.add('hidden'))
+window.addEventListener('resize', updateSidebarCollapsedUI)
 $('sys-prompt-btn').onclick = () => {
   refs.sysInput.value = currentConversation?.systemPrompt || ''
   refs.sysModal.classList.add('open')
@@ -1158,21 +1680,17 @@ $('sys-save').onclick = async () => {
     body: JSON.stringify({ systemPrompt }),
   })
   currentConversation = data.conversation
+  updateConversationDataCache()
   refs.sysModal.classList.remove('open')
-}
-$('clear-btn').onclick = async () => {
-  if (!currentConversation || !confirm('删除当前对话？')) return
-  await api(`/api/conversations/${currentConversation.id}`, { method: 'DELETE' })
-  currentConversation = null
-  messages = []
-  refs.title.textContent = '新对话'
-  renderMessages([])
-  await loadConversations()
 }
 refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.sysModal) refs.sysModal.classList.remove('open') })
 
 ;(async function init() {
-  if (!authToken) return
+  if (!authToken) {
+    refs.bootScreen.classList.add('hidden')
+    refs.authScreen.classList.remove('hidden')
+    return
+  }
   try {
     const data = await api('/api/auth/me')
     currentUser = data.user
@@ -1180,6 +1698,8 @@ refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.s
   } catch {
     LS.del('authToken')
     authToken = ''
+    refs.bootScreen.classList.add('hidden')
+    refs.authScreen.classList.remove('hidden')
   }
 })()
 </script>

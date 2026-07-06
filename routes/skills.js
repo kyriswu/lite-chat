@@ -1,7 +1,8 @@
 import { exec } from 'child_process'
 import fs from 'fs/promises'
 import path from 'path'
-import { one, query } from '../db/index.js'
+import { one, query, withTransaction } from '../db/index.js'
+import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
 
 const CLAWHUB_WORKSPACE = '/root/.openclaw/workspace'
 const SKILLS_STORAGE_DIR = '/root/lite-chat/uploads/skills'
@@ -185,6 +186,7 @@ function publicSkill(row) {
     name: row.name,
     description: row.description || '',
     icon: row.icon || '🤖',
+    is_default: Boolean(row.is_default),
     sort_order: row.sort_order,
   }
 }
@@ -197,6 +199,7 @@ function adminSkill(row) {
     system_prompt: row.system_prompt,
     icon: row.icon || '🤖',
     is_active: row.is_active,
+    is_default: Boolean(row.is_default),
     sort_order: row.sort_order,
     created_by: row.created_by,
     created_at: row.created_at,
@@ -221,6 +224,7 @@ function normalizeSkillInput(body = {}, existing = null) {
     icon: Object.hasOwn(body, 'icon') ? String(body.icon || '').trim() || '🤖' : existing?.icon || '🤖',
     sort_order: Object.hasOwn(body, 'sort_order') ? Number.parseInt(body.sort_order, 10) || 0 : existing?.sort_order || 0,
     is_active: Object.hasOwn(body, 'is_active') ? Boolean(body.is_active) : existing?.is_active ?? true,
+    is_default: Object.hasOwn(body, 'is_default') ? Boolean(body.is_default) : existing?.is_default ?? false,
   }
 }
 
@@ -228,13 +232,17 @@ export default async function skillRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
   app.get('/', async () => {
+    const cached = await cacheGetJson('skills:active')
+    if (cached) return cached
     const result = await query(
-      `SELECT id, name, description, icon, sort_order
+      `SELECT id, name, description, icon, is_default, sort_order
        FROM skills
        WHERE is_active = true
        ORDER BY sort_order ASC, created_at ASC`,
     )
-    return { skills: result.rows.map(publicSkill) }
+    const payload = { skills: result.rows.map(publicSkill) }
+    await cacheSetJson('skills:active', payload, 60)
+    return payload
   })
 }
 
@@ -243,6 +251,8 @@ export async function adminSkillRoutes(app) {
   app.addHook('preHandler', requireSkillAdmin)
 
   app.get('/', async () => {
+    const cached = await cacheGetJson('skills:admin')
+    if (cached) return cached
     const result = await query(
       `SELECT s.*, COUNT(sf.id)::int AS files_count
        FROM skills s
@@ -250,7 +260,9 @@ export async function adminSkillRoutes(app) {
        GROUP BY s.id
        ORDER BY s.sort_order ASC, s.created_at ASC`,
     )
-    return { skills: result.rows.map(adminSkill) }
+    const payload = { skills: result.rows.map(adminSkill) }
+    await cacheSetJson('skills:admin', payload, 30)
+    return payload
   })
 
   app.get('/clawhub/search', async (request, reply) => {
@@ -286,12 +298,15 @@ export async function adminSkillRoutes(app) {
     const clawhubSlug = String(request.body?.clawhub_slug || '').trim() || null
     if (!input.name || !input.system_prompt) return reply.code(400).send({ error: 'Name and system prompt are required' })
 
-    const result = await query(
-      `INSERT INTO skills (name, description, system_prompt, icon, sort_order, is_active, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING *`,
-      [input.name, input.description, input.system_prompt, input.icon, input.sort_order, input.is_active, request.user.id],
-    )
+    const result = await withTransaction(async (client) => {
+      if (input.is_default) await client.query('UPDATE skills SET is_default = false WHERE is_default = true')
+      return client.query(
+        `INSERT INTO skills (name, description, system_prompt, icon, sort_order, is_active, is_default, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING *`,
+        [input.name, input.description, input.system_prompt, input.icon, input.sort_order, input.is_active, input.is_default, request.user.id],
+      )
+    })
     let skill = { ...result.rows[0], files_count: 0 }
     if (clawhubSlug) {
       const version = await getClawHubVersion(clawhubSlug)
@@ -313,6 +328,7 @@ export async function adminSkillRoutes(app) {
       )
       skill = { ...updateResult.rows[0], files_count: copied.length }
     }
+    await cacheDelPattern('skills:*')
     return reply.code(201).send({ skill: adminSkill(skill) })
   })
 
@@ -359,25 +375,31 @@ export async function adminSkillRoutes(app) {
     const input = normalizeSkillInput(request.body || {}, existing)
     if (!input.name || !input.system_prompt) return reply.code(400).send({ error: 'Name and system prompt are required' })
 
-    const result = await query(
-      `UPDATE skills
-       SET name = $2,
-           description = $3,
-           system_prompt = $4,
-           icon = $5,
-           sort_order = $6,
-           is_active = $7,
-           updated_at = now()
-       WHERE id = $1
-       RETURNING *`,
-      [request.params.id, input.name, input.description, input.system_prompt, input.icon, input.sort_order, input.is_active],
-    )
+    const result = await withTransaction(async (client) => {
+      if (input.is_default) await client.query('UPDATE skills SET is_default = false WHERE id <> $1 AND is_default = true', [request.params.id])
+      return client.query(
+        `UPDATE skills
+         SET name = $2,
+             description = $3,
+             system_prompt = $4,
+             icon = $5,
+             sort_order = $6,
+             is_active = $7,
+             is_default = $8,
+             updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [request.params.id, input.name, input.description, input.system_prompt, input.icon, input.sort_order, input.is_active, input.is_default],
+      )
+    })
+    await cacheDelPattern('skills:*')
     return { skill: adminSkill(result.rows[0]) }
   })
 
   app.delete('/:id', async (request, reply) => {
     const result = await query('DELETE FROM skills WHERE id = $1', [request.params.id])
     if (!result.rowCount) return reply.code(404).send({ error: 'Skill not found' })
+    await cacheDelPattern('skills:*')
     return { ok: true }
   })
 }

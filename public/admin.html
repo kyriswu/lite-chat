@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Lite Chat Admin</title>
+<link rel="stylesheet" href="/admin.css" />
+</head>
+<body>
+<div id="admin-app">
+  <aside id="admin-sidebar">
+    <div class="brand">Lite Chat Admin</div>
+    <button class="nav-btn active" data-tab="dashboard">看板</button>
+    <button class="nav-btn" data-tab="providers">供应商</button>
+    <button class="nav-btn" data-tab="skills">技能</button>
+    <button class="nav-btn" data-tab="settings">设置</button>
+    <button class="nav-btn" data-tab="users">用户</button>
+    <div class="sidebar-spacer"></div>
+    <div id="admin-user-line"></div>
+    <a class="secondary link-btn" href="/">返回聊天</a>
+    <button class="secondary" id="logout-btn">退出登录</button>
+  </aside>
+
+  <main id="admin-main">
+    <header id="admin-topbar">
+      <div>
+        <h1 id="page-title">看板</h1>
+        <div id="page-subtitle">系统数据概览</div>
+      </div>
+      <div id="admin-status"></div>
+    </header>
+
+    <section class="admin-pane" id="pane-dashboard">
+      <div class="stats-grid" id="admin-stats"></div>
+      <div class="two-col dashboard-band">
+        <section>
+          <h2>历史 Token 消耗趋势（按天）</h2>
+          <div class="chart-card" id="admin-trend-chart"></div>
+        </section>
+        <section>
+          <h2>模型使用分布</h2>
+          <div class="chart-card" id="admin-model-usage"></div>
+        </section>
+      </div>
+      <div class="two-col">
+        <section>
+          <h2>近期用户</h2>
+          <div class="data-list" id="admin-recent-users"></div>
+        </section>
+        <section>
+          <h2>近期对话</h2>
+          <div class="data-list" id="admin-recent-conversations"></div>
+        </section>
+      </div>
+      <div class="two-col dashboard-band">
+        <section>
+          <h2>Token 消耗排行</h2>
+          <div class="data-list" id="admin-top-users"></div>
+        </section>
+        <section>
+          <h2>高消耗对话</h2>
+          <div class="data-list" id="admin-top-conversations"></div>
+        </section>
+      </div>
+      <section class="dashboard-band">
+        <h2>模型明细</h2>
+        <div class="data-list" id="admin-model-table"></div>
+      </section>
+    </section>
+
+    <section class="admin-pane hidden" id="pane-providers">
+      <div class="split-layout">
+        <section>
+          <h2>全局 Provider</h2>
+          <div class="data-list" id="admin-provider-list"></div>
+        </section>
+        <section>
+          <h2>编辑 Provider</h2>
+          <form class="form" id="admin-provider-form">
+            <input type="hidden" id="admin-provider-id" />
+            <div class="field"><label>名称</label><input class="input" id="admin-provider-name" required /></div>
+            <div class="field"><label>Base URL</label><input class="input" id="admin-provider-base-url" placeholder="https://api.openai.com" required /></div>
+            <div class="field"><label>API Key</label><input class="input" id="admin-provider-api-key" type="password" placeholder="留空保持不变，输入新值替换" /></div>
+            <div class="field">
+              <label>API 兼容格式</label>
+              <select class="input" id="admin-provider-api-format">
+                <option value="openai_chat_completions">OpenAI Chat Completions</option>
+                <option value="openai_responses">OpenAI Responses</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>默认模型</label>
+              <div class="inline-row">
+                <select class="input" id="admin-provider-default-model-select">
+                  <option value="">-- 请先点击刷新加载模型 --</option>
+                </select>
+                <button class="secondary" type="button" id="admin-load-models-btn">刷新</button>
+              </div>
+              <input class="input" id="admin-provider-default-model" placeholder="或手动输入模型名称" />
+              <div id="admin-model-load-status" class="field-status hidden"></div>
+            </div>
+            <div class="actions">
+              <button class="secondary" id="admin-provider-reset" type="button">清空</button>
+              <button class="primary" type="submit">保存</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section class="admin-pane hidden" id="pane-skills">
+      <div class="split-layout">
+        <section>
+          <h2>技能</h2>
+          <div class="clawhub-box">
+            <label>从 ClawHub 导入技能</label>
+            <div class="inline-row">
+              <input class="input" id="clawhub-search-input" placeholder="搜索 ClawHub 技能" />
+              <button class="secondary" id="clawhub-search-btn" type="button">搜索</button>
+            </div>
+            <div id="clawhub-results" class="hidden"></div>
+          </div>
+          <div class="data-list" id="admin-skill-list"></div>
+        </section>
+        <section>
+          <h2>编辑技能</h2>
+          <form class="form" id="admin-skill-form">
+            <input type="hidden" id="admin-skill-id" />
+            <input type="hidden" id="admin-skill-clawhub-slug" />
+            <div class="field"><label>图标 Emoji</label><input class="input short-input" id="admin-skill-icon" value="🤖" maxlength="4" /></div>
+            <div class="field"><label>名称</label><input class="input" id="admin-skill-name" required /></div>
+            <div class="field"><label>描述</label><input class="input" id="admin-skill-desc" /></div>
+            <div class="attachment-preview hidden" id="clawhub-attachment-preview"></div>
+            <div class="field"><label>System Prompt</label><textarea class="input" id="admin-skill-prompt" rows="8" required></textarea></div>
+            <div class="field"><label>排序</label><input class="input" id="admin-skill-order" type="number" value="0" /></div>
+            <label class="check-row"><input type="checkbox" id="admin-skill-active" checked /> 启用</label>
+            <label class="check-row"><input type="checkbox" id="admin-skill-default" /> 默认开启</label>
+            <div class="actions">
+              <button class="secondary" id="admin-skill-reset" type="button">清空</button>
+              <button class="primary" type="submit">保存</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section class="admin-pane hidden" id="pane-settings">
+      <div class="split-layout">
+        <section>
+          <h2>聊天上下文</h2>
+          <div class="data-row">
+            <div>
+              <div class="row-title">携带上下文消息数</div>
+              <div class="row-meta">普通发送和编辑气泡重新生成都会使用这个数量。System Prompt 不计入。</div>
+            </div>
+          </div>
+        </section>
+        <section>
+          <h2>编辑设置</h2>
+          <form class="form" id="admin-settings-form">
+            <div class="field">
+              <label>上下文消息数（1-200）</label>
+              <input class="input short-input" id="admin-context-message-limit" type="number" min="1" max="200" value="20" />
+            </div>
+            <div class="actions">
+              <button class="primary" type="submit">保存设置</button>
+            </div>
+          </form>
+        </section>
+      </div>
+    </section>
+
+    <section class="admin-pane hidden" id="pane-users">
+      <div class="split-layout">
+        <section>
+          <h2>新增用户</h2>
+          <form class="form" id="admin-user-create-form">
+            <div class="field"><label>登录邮箱</label><input class="input" id="admin-create-email" type="email" required /></div>
+            <div class="field"><label>显示名</label><input class="input" id="admin-create-display-name" /></div>
+            <div class="field"><label>密码</label><input class="input" id="admin-create-password" type="password" minlength="8" required /></div>
+            <label class="check-row"><input type="checkbox" id="admin-create-is-admin" /> 管理员</label>
+            <div class="actions">
+              <button class="primary" type="submit">创建用户</button>
+            </div>
+          </form>
+        </section>
+        <section>
+          <h2>用户列表</h2>
+          <div class="toolbar">
+            <input class="input" id="admin-user-search" placeholder="搜索邮箱或显示名" />
+            <button class="secondary" id="admin-user-search-btn" type="button">搜索</button>
+          </div>
+          <div class="data-list" id="admin-user-list"></div>
+        </section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="/admin.js"></script>
+</body>
+</html>

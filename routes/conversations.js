@@ -1,4 +1,5 @@
 import { one, query } from '../db/index.js'
+import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
 
 function publicConversation(row) {
   return {
@@ -20,21 +21,39 @@ function publicMessage(row) {
     role: row.role,
     content: row.content,
     createdAt: row.created_at,
+    tokenCount: row.token_count,
+    promptTokens: row.prompt_tokens,
+    completionTokens: row.completion_tokens,
+    modelId: row.model_id,
     error: row.error,
   }
+}
+
+function parsePositiveInt(value, fallback, max = 500) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return Math.min(parsed, max)
 }
 
 export default async function conversationRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
   app.get('/', async (request) => {
+    const limit = parsePositiveInt(request.query?.limit, null, 200)
+    const cacheKey = `u:${request.user.id}:conversations:limit:${limit || 'all'}`
+    const cached = await cacheGetJson(cacheKey)
+    if (cached) return cached
     const result = await query(
-      `SELECT * FROM conversations
+      `SELECT *
+       FROM conversations
        WHERE user_id = $1 AND archived_at IS NULL
-       ORDER BY updated_at DESC`,
-      [request.user.id],
+       ORDER BY updated_at DESC
+       ${limit ? 'LIMIT $2' : ''}`,
+      limit ? [request.user.id, limit] : [request.user.id],
     )
-    return { conversations: result.rows.map(publicConversation) }
+    const payload = { conversations: result.rows.map(publicConversation), pagination: limit ? { limit } : null }
+    await cacheSetJson(cacheKey, payload, 15)
+    return payload
   })
 
   app.post('/', async (request, reply) => {
@@ -51,17 +70,59 @@ export default async function conversationRoutes(app) {
        RETURNING *`,
       [request.user.id, providerId, title, body.systemPrompt || null, body.model || null],
     )
+    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
     return reply.code(201).send({ conversation: publicConversation(result.rows[0]) })
   })
 
   app.get('/:id', async (request, reply) => {
-    const conversation = await one('SELECT * FROM conversations WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
+    const limit = parsePositiveInt(request.query?.limit, null)
+    const before = String(request.query?.before || '').trim()
+    const cacheKey = `u:${request.user.id}:conversation:${request.params.id}:limit:${limit || 'all'}:before:${before || 'latest'}`
+    const cached = await cacheGetJson(cacheKey)
+    if (cached) return cached
+
+    const conversationQuery = one('SELECT * FROM conversations WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
+    let messages
+    let messagesQuery
+    if (limit) {
+      const params = [request.params.id, request.user.id, limit + 1]
+      const beforeClause = before ? 'AND created_at < $4' : ''
+      if (before) params.push(before)
+      messagesQuery = query(
+        `SELECT *
+         FROM messages
+         WHERE conversation_id = $1 AND user_id = $2 ${beforeClause}
+         ORDER BY created_at DESC
+         LIMIT $3`,
+        params,
+      )
+    } else {
+      messagesQuery = query(
+        'SELECT * FROM messages WHERE conversation_id = $1 AND user_id = $2 ORDER BY created_at ASC',
+        [request.params.id, request.user.id],
+      )
+    }
+    const [conversation, messagesResult] = await Promise.all([conversationQuery, messagesQuery])
     if (!conversation) return reply.code(404).send({ error: 'Conversation not found' })
-    const messages = await query(
-      'SELECT * FROM messages WHERE conversation_id = $1 AND user_id = $2 ORDER BY created_at ASC',
-      [request.params.id, request.user.id],
-    )
-    return { conversation: publicConversation(conversation), messages: messages.rows.map(publicMessage) }
+
+    messages = messagesResult
+    let hasMore = false
+    if (limit) {
+      hasMore = messages.rows.length > limit
+      if (hasMore) messages.rows.pop()
+      messages.rows.reverse()
+    }
+    const payload = {
+      conversation: publicConversation(conversation),
+      messages: messages.rows.map(publicMessage),
+      pagination: limit ? {
+        limit,
+        hasMore,
+        before: messages.rows[0]?.created_at || null,
+      } : null,
+    }
+    await cacheSetJson(cacheKey, payload, limit ? 30 : 10)
+    return payload
   })
 
   app.patch('/:id', async (request, reply) => {
@@ -92,12 +153,16 @@ export default async function conversationRoutes(app) {
         body.archived ? new Date() : existing.archived_at,
       ],
     )
+    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
+    await cacheDelPattern(`u:${request.user.id}:conversation:${request.params.id}:*`)
     return { conversation: publicConversation(result.rows[0]) }
   })
 
   app.delete('/:id', async (request, reply) => {
     const result = await query('DELETE FROM conversations WHERE id = $1 AND user_id = $2', [request.params.id, request.user.id])
     if (!result.rowCount) return reply.code(404).send({ error: 'Conversation not found' })
+    await cacheDelPattern(`u:${request.user.id}:conversations:*`)
+    await cacheDelPattern(`u:${request.user.id}:conversation:${request.params.id}:*`)
     return { ok: true }
   })
 }

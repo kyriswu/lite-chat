@@ -35,6 +35,7 @@ export async function runMigrations() {
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false')
   await query('ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL')
   await query('ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false')
+  await query("ALTER TABLE providers ADD COLUMN IF NOT EXISTS api_format TEXT NOT NULL DEFAULT 'openai_chat_completions'")
   await query('UPDATE providers SET is_global = true WHERE user_id IS NULL')
   await query('CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true')
   await query(`
@@ -45,13 +46,31 @@ export async function runMigrations() {
       system_prompt TEXT NOT NULL,
       icon TEXT DEFAULT '🤖',
       is_active BOOLEAN NOT NULL DEFAULT true,
+      is_default BOOLEAN NOT NULL DEFAULT false,
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_by UUID REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `)
+  await query('ALTER TABLE skills ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false')
   await query('CREATE INDEX IF NOT EXISTS skills_sort_idx ON skills(sort_order ASC, created_at ASC)')
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS skills_one_default_idx ON skills(is_default) WHERE is_default = true')
+  await query('CREATE INDEX IF NOT EXISTS settings_user_id_idx ON settings(user_id)')
+  await query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
+  await query('CREATE INDEX IF NOT EXISTS conversations_id_user_id_idx ON conversations(id, user_id)')
+  await query('CREATE INDEX IF NOT EXISTS conversations_active_user_updated_idx ON conversations(user_id, updated_at DESC) WHERE archived_at IS NULL')
+  await query('CREATE INDEX IF NOT EXISTS messages_conversation_user_created_idx ON messages(conversation_id, user_id, created_at ASC)')
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER')
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS completion_tokens INTEGER')
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS model_id TEXT')
   await query(`
     CREATE TABLE IF NOT EXISTS skill_files (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
