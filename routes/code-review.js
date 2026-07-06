@@ -1,4 +1,4 @@
-import { spawn } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -73,10 +73,34 @@ async function fetchTextWithTimeout(url, timeoutMs = 15000) {
     return await response.text()
   } catch (err) {
     if (controller.signal.aborted) throw new Error('抓取题面超时')
-    throw err
+    // Some environments cannot reach Luogu via Node fetch due TLS/proxy stack,
+    // while curl still works. Use curl as a safe fallback to improve reliability.
+    return fetchTextViaCurl(url, timeoutMs)
   } finally {
     clearTimeout(timer)
   }
+}
+
+function fetchTextViaCurl(url, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const seconds = Math.max(1, Math.ceil(timeoutMs / 1000))
+    const args = [
+      '-sSL',
+      '--max-time',
+      String(seconds),
+      url,
+    ]
+    execFile('curl', args, { timeout: timeoutMs, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const message = String(error.message || '').toLowerCase()
+        if (message.includes('timed out')) return reject(new Error('抓取题面超时'))
+        return reject(new Error('抓取题面失败（网络不可达）'))
+      }
+      const html = String(stdout || '')
+      if (!html.trim()) return reject(new Error('抓取题面失败（空响应）'))
+      return resolve(html)
+    })
+  })
 }
 
 function extractLuoguContext(html) {
@@ -89,11 +113,18 @@ function extractLuoguContext(html) {
   }
 }
 
-function coalesceLimit(values, fallbackRaw, divisor) {
+function coalesceTimeLimit(values, fallbackRaw) {
   const list = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : []
   if (!list.length) return fallbackRaw
   const max = Math.max(...list)
-  return `${max / divisor}${divisor === 1000 ? ' 秒' : ' MB'}`
+  return `${max / 1000} 秒`
+}
+
+function coalesceMemoryLimit(values, fallbackRaw) {
+  const list = Array.isArray(values) ? values.map(Number).filter(Number.isFinite) : []
+  if (!list.length) return fallbackRaw
+  const max = Math.max(...list)
+  return `${max / 1024} MB`
 }
 
 function buildLuoguProblemText(problem) {
@@ -106,8 +137,8 @@ function buildLuoguProblemText(problem) {
   const formatO = String(contenu.formatO || '').trim()
   const hint = String(contenu.hint || '').trim()
   const samples = Array.isArray(problem?.samples) ? problem.samples : []
-  const timeLimit = coalesceLimit(problem?.limits?.time, null, 1000)
-  const memoryLimit = coalesceLimit(problem?.limits?.memory, null, 1000)
+  const timeLimit = coalesceTimeLimit(problem?.limits?.time, null)
+  const memoryLimit = coalesceMemoryLimit(problem?.limits?.memory, null)
 
   const sections = []
   if (title) sections.push(title)
@@ -143,9 +174,9 @@ function buildLuoguProblemText(problem) {
   }
 }
 
-async function importLuoguProblem(rawUrl) {
+async function importLuoguProblem(rawUrl, options = {}) {
   const source = ensureSupportedProblemUrl(rawUrl)
-  const html = await fetchTextWithTimeout(source.url)
+  const html = await fetchTextWithTimeout(source.url, 15000)
   const context = extractLuoguContext(html)
   const problem = context?.data?.problem
   if (!problem) throw new Error('未找到题目主体')
@@ -713,7 +744,7 @@ export default async function codeReviewRoutes(app) {
         ? 400
         : /未找到|解析失败|内容为空/.test(message)
           ? 422
-          : /超时|上游返回/.test(message)
+          : /超时|上游返回|网络不可达/.test(message)
             ? 502
             : 500
       return reply.code(statusCode).send({ error: message })

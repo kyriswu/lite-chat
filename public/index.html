@@ -111,6 +111,55 @@
   #chat-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 800; font-size: 18px; letter-spacing: -.02em; color: #131926; }
   #messages { flex: 1; overflow-y: auto; padding: 24px 0; background: #f5f7fb; }
   #empty-state { height: 100%; display: grid; place-items: center; color: var(--text2); }
+  .chat-empty-shell { width: min(640px, 92vw); display: grid; gap: 18px; }
+  .chat-empty-copy { text-align: center; display: grid; gap: 6px; }
+  .chat-empty-title { color: #151b28; font-size: 20px; font-weight: 800; letter-spacing: -.01em; }
+  .chat-empty-subtitle { color: var(--text2); font-size: 14px; }
+  .chat-empty-import {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,.96);
+    border: 1px solid #dbe1ec;
+    border-radius: 12px;
+    box-shadow: var(--shadow-card);
+    padding: 8px;
+  }
+  .chat-empty-prefix {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 9px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 10px;
+    white-space: nowrap;
+  }
+  .chat-empty-url {
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 14px;
+    padding: 8px 6px;
+  }
+  .chat-empty-url::placeholder { color: #8a92a3; }
+  .chat-empty-import-btn {
+    border-radius: 10px;
+    padding: 9px 14px;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .chat-empty-quick { display: flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+  .chat-empty-quick-label { color: var(--text2); font-size: 12px; align-self: center; }
+  .chat-empty-quick-btn { border-radius: 999px; padding: 7px 12px; font-size: 12px; }
   .msg-row { max-width: 860px; margin: 0 auto 16px; padding: 0 22px; display: flex; flex-direction: column; }
   .msg-row.user { align-items: flex-end; }
   .msg-row.assistant { align-items: flex-start; }
@@ -200,6 +249,18 @@
     #close-sidebar { display: inline-flex; }
     .bubble { max-width: 96%; }
     #topbar { padding: 0 10px; }
+    .chat-empty-shell { width: min(96vw, 640px); gap: 14px; }
+    .chat-empty-import {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        'prefix prefix'
+        'input button';
+      gap: 7px;
+    }
+    .chat-empty-prefix { grid-area: prefix; justify-self: start; }
+    .chat-empty-url { grid-area: input; font-size: 13px; }
+    .chat-empty-import-btn { grid-area: button; padding: 9px 12px; }
+    .chat-empty-title { font-size: 18px; }
   }
 </style>
 <script>
@@ -620,6 +681,109 @@ function setStatus(text, danger = true) {
   refs.status.style.color = danger ? 'var(--danger)' : 'var(--ok)'
 }
 
+function extractLuoguProblemUrl(text) {
+  const match = String(text || '').match(/https?:\/\/(?:www\.)?luogu\.com\.cn\/problem\/[A-Za-z0-9_-]+/i)
+  return match ? match[0] : ''
+}
+
+function normalizeLuoguProblemUrl(rawUrl) {
+  const source = String(rawUrl || '').trim()
+  if (!source) return ''
+  const matched = extractLuoguProblemUrl(source)
+  return matched || source
+}
+
+function renderChatEmptyState() {
+  return `
+    <div id="empty-state">
+      <div class="chat-empty-shell">
+        <div class="chat-empty-copy">
+          <div class="chat-empty-title">开始全新对话，或直接导入题目</div>
+          <div class="chat-empty-subtitle">粘贴洛谷链接后可一键解析题面并填充到输入框</div>
+        </div>
+        <div class="chat-empty-import">
+          <div class="chat-empty-prefix">🔗 Luogu</div>
+          <input
+            id="empty-luogu-url"
+            class="chat-empty-url"
+            type="url"
+            placeholder="粘贴洛谷题目链接 (如: https://www.luogu.com.cn/problem/P1003)..."
+          />
+          <button id="empty-luogu-import-btn" class="primary chat-empty-import-btn" type="button">导入</button>
+        </div>
+        <div class="chat-empty-quick">
+          <span class="chat-empty-quick-label">热门题号:</span>
+          <button class="secondary chat-empty-quick-btn" type="button" data-luogu-pid="P1001">P1001</button>
+          <button class="secondary chat-empty-quick-btn" type="button" data-luogu-pid="P1003">P1003</button>
+          <button class="secondary chat-empty-quick-btn" type="button" data-luogu-pid="P1211">P1211</button>
+        </div>
+      </div>
+    </div>
+  `
+}
+
+async function importProblemToComposer(rawUrl, triggerButton = null) {
+  const url = normalizeLuoguProblemUrl(rawUrl)
+  if (!url) {
+    setStatus('题目链接不能为空')
+    return
+  }
+
+  const importBtn = triggerButton || document.getElementById('empty-luogu-import-btn')
+  const urlInput = document.getElementById('empty-luogu-url')
+  if (urlInput) urlInput.value = url
+  if (importBtn) importBtn.disabled = true
+  setStatus('正在导入洛谷题面...', false)
+
+  try {
+    const payload = await api('/api/code-review/import-problem', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    })
+    const importedText = String(payload.problemText || '')
+    if (!importedText.trim()) throw new Error('题面导入为空，请换一个链接重试')
+    refs.input.value = importedText
+    refs.input.style.height = 'auto'
+    refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
+    refs.input.focus()
+    setStatus(`导入完成：${payload.meta?.title || payload.meta?.pid || '洛谷题面'}`, false)
+  } catch (err) {
+    setStatus(err.message || '题目导入失败')
+  } finally {
+    if (importBtn) importBtn.disabled = false
+  }
+}
+
+function bindChatEmptyStateEvents() {
+  const urlInput = document.getElementById('empty-luogu-url')
+  const importBtn = document.getElementById('empty-luogu-import-btn')
+  if (!urlInput || !importBtn) return
+
+  importBtn.onclick = () => importProblemToComposer(urlInput.value, importBtn)
+  urlInput.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return
+    event.preventDefault()
+    importProblemToComposer(urlInput.value, importBtn)
+  })
+  urlInput.addEventListener('paste', (event) => {
+    const pasted = event.clipboardData?.getData('text/plain') || ''
+    const parsed = extractLuoguProblemUrl(pasted)
+    if (!parsed) return
+    event.preventDefault()
+    urlInput.value = parsed
+  })
+
+  for (const tag of document.querySelectorAll('[data-luogu-pid]')) {
+    tag.addEventListener('click', () => {
+      const pid = String(tag.getAttribute('data-luogu-pid') || '').trim().toUpperCase()
+      if (!pid) return
+      const url = `https://www.luogu.com.cn/problem/${pid}`
+      urlInput.value = url
+      importProblemToComposer(url, importBtn)
+    })
+  }
+}
+
 function formatRelativeTime(value) {
   if (!value) return ''
   const date = new Date(value)
@@ -915,7 +1079,8 @@ function renderMessages(items, { scrollMode = 'bottom', conversationId = current
   const previousTop = refs.messages.scrollTop
   const fragment = document.createDocumentFragment()
   if (!items.length) {
-    refs.messages.innerHTML = '<div id="empty-state">开始对话</div>'
+    refs.messages.innerHTML = renderChatEmptyState()
+    bindChatEmptyStateEvents()
     return
   }
   for (const msg of items) fragment.appendChild(createMessageElement(msg))
