@@ -37,17 +37,170 @@
   .boot-text { font-size: 13px; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  #auth-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
-  .auth-box { width: min(420px, 100%); background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px; display: grid; gap: 16px; }
-  .auth-title { color: var(--accent2); font-size: 24px; font-weight: 800; }
-  .tabs { display: grid; grid-template-columns: 1fr 1fr; background: var(--surface2); border-radius: 8px; padding: 4px; }
-  .tab { min-width: 0; border: 0; background: transparent; color: var(--text2); padding: 9px; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; font-size: inherit; font-weight: 500; transition: background 0.15s, color 0.15s; }
-  .tab.active { background: var(--accent); color: white; }
-  .form { display: grid; gap: 10px; }
+  #auth-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background:
+      radial-gradient(900px 520px at 12% 0%, rgba(47,111,236,.22), transparent 56%),
+      radial-gradient(800px 500px at 88% 100%, rgba(19,174,130,.16), transparent 54%),
+      rgba(13,19,34,.42);
+    backdrop-filter: blur(8px);
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .auth-box {
+    width: min(430px, 100%);
+    background: linear-gradient(180deg, rgba(255,255,255,.96) 0%, rgba(247,251,255,.94) 100%);
+    border: 1px solid rgba(255,255,255,.62);
+    border-radius: 20px;
+    padding: 24px;
+    display: grid;
+    gap: 16px;
+    box-shadow: 0 36px 90px -42px rgba(9,15,32,.76), 0 1px 0 rgba(255,255,255,.88) inset;
+    position: relative;
+    overflow: hidden;
+    animation: auth-pop .24s var(--motion-ease);
+  }
+  .auth-box::before {
+    content: '';
+    position: absolute;
+    width: 210px;
+    height: 210px;
+    right: -76px;
+    top: -84px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(47,111,236,.22) 0%, rgba(47,111,236,0) 70%);
+    pointer-events: none;
+  }
+  .auth-box::after {
+    content: '';
+    position: absolute;
+    width: 170px;
+    height: 170px;
+    left: -70px;
+    bottom: -88px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(19,174,130,.2) 0%, rgba(19,174,130,0) 72%);
+    pointer-events: none;
+  }
+  @keyframes auth-pop {
+    from { opacity: 0; transform: translateY(8px) scale(.985); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .auth-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    border: 0;
+    background: rgba(255,255,255,.72);
+    color: var(--text2);
+    font-size: 18px;
+    line-height: 1;
+    z-index: 2;
+  }
+  .auth-close:hover { background: #eef4ff; color: #1f355f; }
+  .auth-kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    font-size: 11px;
+    letter-spacing: .08em;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: #325eaa;
+    background: rgba(47,111,236,.12);
+    border: 1px solid rgba(47,111,236,.24);
+    border-radius: 999px;
+    padding: 4px 10px;
+    position: relative;
+    z-index: 1;
+  }
+  .auth-title {
+    color: #1f3562;
+    font-size: 29px;
+    font-weight: 880;
+    letter-spacing: -.015em;
+    line-height: 1.08;
+    position: relative;
+    z-index: 1;
+  }
+  .auth-subtitle {
+    margin-top: -8px;
+    font-size: 13px;
+    color: #6d7f9f;
+    line-height: 1.5;
+    position: relative;
+    z-index: 1;
+  }
+  .tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    background: rgba(228,236,248,.86);
+    border: 1px solid #d5dfef;
+    border-radius: 12px;
+    padding: 4px;
+    position: relative;
+    z-index: 1;
+  }
+  .tab {
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: #627798;
+    padding: 10px;
+    border-radius: 9px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 650;
+    transition: background-color var(--motion-fast) var(--motion-ease), color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+  }
+  .tab.active {
+    background: linear-gradient(180deg, #3f7ef2 0%, #2f6fec 100%);
+    color: #fff;
+    box-shadow: 0 9px 20px -12px rgba(47,111,236,.92);
+  }
+  .form { display: grid; gap: 12px; position: relative; z-index: 1; }
   .field { display: grid; gap: 6px; }
-  label { color: var(--text2); font-size: 12px; }
-  .input, select, textarea { width: 100%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; outline: none; }
-  .input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+  label { color: #5f7495; font-size: 12px; font-weight: 620; letter-spacing: .01em; }
+  .input, select, textarea {
+    width: 100%;
+    background: rgba(255,255,255,.78);
+    color: var(--text);
+    border: 1px solid #cdd8ea;
+    border-radius: 10px;
+    padding: 11px 12px;
+    outline: none;
+    transition: border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease), background-color var(--motion-fast) var(--motion-ease);
+  }
+  .input:focus, select:focus, textarea:focus {
+    border-color: rgba(47,111,236,.62);
+    background: rgba(255,255,255,.95);
+    box-shadow: 0 0 0 3px rgba(47,111,236,.12);
+  }
+  #auth-submit {
+    background: linear-gradient(180deg, #3f7ef2 0%, #2f6fec 100%);
+    border-radius: 10px;
+    padding: 11px 14px;
+    font-weight: 720;
+    letter-spacing: .01em;
+    box-shadow: 0 12px 24px -13px rgba(47,111,236,.86);
+    transition: transform var(--motion-fast) var(--motion-ease), filter var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+  }
+  #auth-submit:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.03);
+    box-shadow: 0 16px 28px -14px rgba(47,111,236,.95);
+  }
+  #auth-submit:active { transform: translateY(0); }
+  #auth-status { min-height: 18px; color: var(--danger); font-size: 13px; line-height: 1.4; padding-left: 2px; }
   .primary, .btn { background: var(--accent); color: white; border: 0; border-radius: 8px; padding: 10px 14px; }
   .secondary { background: transparent; color: var(--text2); border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px; }
   .secondary.active { background: var(--surface2); color: var(--accent2); border-color: var(--accent); }
@@ -220,6 +373,7 @@
   }
   .topbar-action.primary { background: rgba(47,111,236,.14); color: #19449f; box-shadow: inset 0 0 0 1px rgba(47,111,236,.22); }
   .topbar-action.primary:hover { background: rgba(47,111,236,.2); color: #123a8f; }
+  #open-auth-btn { display: none; }
   .topbar-action .icon-svg {
     width: 14px;
     height: 14px;
@@ -383,6 +537,24 @@
   .skill-item-desc { font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .skill-none { padding: 6px 10px; font-size: 12px; color: var(--text2); text-align: center; }
 
+  body.guest-mode #sidebar,
+  body.guest-mode #toggle-sidebar,
+  body.guest-mode #code-review-btn,
+  body.guest-mode #sys-prompt-btn,
+  body.guest-mode #skill-btn,
+  body.guest-mode .hint {
+    display: none !important;
+  }
+  body.guest-mode #main { width: 100%; }
+  body.guest-mode #messages { display: grid; place-items: center; }
+  body.guest-mode #messages > #empty-state { width: 100%; }
+  body.guest-mode #input-bar { padding-top: 0; border-top: 0; background: transparent; backdrop-filter: none; }
+  body.guest-mode #input-wrap { max-width: min(92vw, 760px); }
+  body.guest-mode #msg-input { min-height: 90px; }
+  body.guest-mode #topbar { justify-content: flex-end; }
+  body.guest-mode #chat-title { display: none; }
+  body.guest-mode #open-auth-btn { display: inline-flex; }
+
 
   @media (max-width: 720px) {
     #sidebar-overlay.show { display: block; }
@@ -434,7 +606,10 @@
 
 <section id="auth-screen" class="hidden">
   <div class="auth-box">
+    <button class="auth-close" id="auth-close" type="button" title="关闭">×</button>
+    <div class="auth-kicker">Lite Chat</div>
     <div class="auth-title">算法助手</div>
+    <div class="auth-subtitle">登录后可保存会话历史、自动接续导入题面并进入你的专属对话空间。</div>
     <div class="tabs">
       <button class="tab active" id="login-tab">登录</button>
       <button class="tab" id="register-tab">注册</button>
@@ -475,6 +650,7 @@
     <div id="topbar">
       <button class="icon-btn" id="toggle-sidebar" title="收起侧栏"></button>
       <span id="chat-title">新对话</span>
+      <button class="topbar-action primary" id="open-auth-btn" type="button">登录 / 注册</button>
       <button class="topbar-action primary" id="code-review-btn">
         <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 8-4 4 4 4"></path><path d="m16 8 4 4-4 4"></path><path d="m14 4-4 16"></path><circle cx="19" cy="5" r="2"></circle></svg>
         <span>代码审查</span>
@@ -792,6 +968,8 @@ const conversationScrollPositions = new Map()
 const streamingConversationIds = new Set()
 const streamControllers = new Map()
 let authMode = 'login'
+let appMode = 'guest'
+let pendingAction = null
 let skills = []
 let activeSkillId = null
 let skillSelectionTouched = false
@@ -802,6 +980,7 @@ const $ = (id) => document.getElementById(id)
 const refs = {
   bootScreen: $('boot-screen'), authScreen: $('auth-screen'), app: $('app'), authForm: $('auth-form'), authStatus: $('auth-status'),
   loginTab: $('login-tab'), registerTab: $('register-tab'), nameField: $('name-field'), authSubmit: $('auth-submit'),
+  authClose: $('auth-close'), openAuthBtn: $('open-auth-btn'),
   list: $('conversation-list'), title: $('chat-title'), messages: $('messages'), input: $('msg-input'),
   send: $('send-btn'),
   status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
@@ -840,11 +1019,12 @@ function setComposerDisabled(disabled, conversationId = currentConversation?.id)
 }
 
 async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) }
-  const isForm = options.body instanceof FormData
+  const { skipAuth = false, ...requestOptions } = options || {}
+  const headers = { ...(requestOptions.headers || {}) }
+  const isForm = requestOptions.body instanceof FormData
   if (!isForm) headers['Content-Type'] = 'application/json'
-  if (authToken) headers.Authorization = `Bearer ${authToken}`
-  const res = await fetch(path, { ...options, headers })
+  if (!skipAuth && authToken) headers.Authorization = `Bearer ${authToken}`
+  const res = await fetch(path, { ...requestOptions, headers })
   if (!res.ok) {
     let message = `HTTP ${res.status}`
     try {
@@ -857,6 +1037,59 @@ async function api(path, options = {}) {
   }
   if (res.status === 204) return null
   return res.json()
+}
+
+function setAppMode(mode) {
+  appMode = mode
+  document.body.classList.toggle('guest-mode', mode === 'guest')
+  if (refs.openAuthBtn) refs.openAuthBtn.classList.toggle('hidden', mode !== 'guest')
+}
+
+function openAuthModal(message = '') {
+  refs.authStatus.textContent = message || ''
+  refs.authScreen.classList.remove('hidden')
+}
+
+function closeAuthModal() {
+  if (appMode !== 'guest') return
+  refs.authScreen.classList.add('hidden')
+}
+
+function queuePendingSend() {
+  pendingAction = {
+    type: 'sendCurrentInput',
+    inputValue: refs.input.value,
+  }
+}
+
+async function executePendingAction() {
+  const action = pendingAction
+  pendingAction = null
+  if (!action) return
+  if (action.type !== 'sendCurrentInput') return
+  if (!String(action.inputValue || '').trim()) return
+  refs.input.value = String(action.inputValue || '')
+  refs.input.style.height = 'auto'
+  refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
+  await sendMessage()
+}
+
+async function enterGuestApp() {
+  setAppMode('guest')
+  refs.bootScreen.classList.add('hidden')
+  refs.authScreen.classList.add('hidden')
+  refs.app.classList.remove('hidden')
+  renderStaticIcons()
+  refs.title.textContent = '算法助手'
+  refs.userLine.textContent = ''
+  refs.adminBtn.classList.add('hidden')
+  conversations = []
+  messages = []
+  currentConversation = null
+  renderSidebar()
+  renderMessages([])
+  loadMarkdownLibraries()
+  setComposerDisabled(false)
 }
 
 function setStatus(text, danger = true) {
@@ -929,9 +1162,11 @@ async function importProblemToComposer(rawUrl, triggerButton = null) {
   setStatus('正在导入题面...', false)
 
   try {
-    const payload = await api('/api/code-review/import-problem', {
+    const importPath = authToken ? '/api/code-review/import-problem' : '/api/public/import-problem-preview'
+    const payload = await api(importPath, {
       method: 'POST',
       body: JSON.stringify({ url }),
+      skipAuth: !authToken,
     })
     const importedText = String(payload.problemText || '')
     if (!importedText.trim()) throw new Error('题面导入为空，请换一个链接重试')
@@ -940,6 +1175,10 @@ async function importProblemToComposer(rawUrl, triggerButton = null) {
     refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
     refs.input.focus()
     const importedLabel = payload.meta?.title || payload.meta?.pid || '洛谷题面'
+    if (!authToken) {
+      setStatus(`导入完成：${importedLabel}，点击发送将弹出登录并自动继续`, false)
+      return
+    }
     setStatus(`导入完成：${importedLabel}，正在自动发送...`, false)
 
     const content = buildMessageContentFromMarkdown(refs.input.value)
@@ -1030,7 +1269,7 @@ refs.authForm.onsubmit = async (event) => {
     displayName: $('auth-name').value.trim(),
   }
   try {
-    const data = await api(`/api/auth/${authMode}`, { method: 'POST', body: JSON.stringify(body) })
+    const data = await api(`/api/auth/${authMode}`, { method: 'POST', body: JSON.stringify(body), skipAuth: true })
     authToken = data.token
     currentUser = data.user
     LS.set('authToken', authToken)
@@ -1041,6 +1280,7 @@ refs.authForm.onsubmit = async (event) => {
 }
 
 async function enterApp() {
+  setAppMode('app')
   refs.bootScreen.classList.add('hidden')
   refs.authScreen.classList.add('hidden')
   refs.app.classList.remove('hidden')
@@ -1055,6 +1295,7 @@ async function enterApp() {
   if (activeId && conversations.some((c) => c.id === activeId)) await switchConversation(activeId)
   else if (conversations[0]) await switchConversation(conversations[0].id)
   else renderMessages([])
+  await executePendingAction()
 }
 
 async function loadProviders() {
@@ -1510,6 +1751,11 @@ async function sendMessage() {
   const text = refs.input.value.trim()
   const content = buildMessageContentFromMarkdown(refs.input.value)
   if (!hasEditableContent(content)) return
+  if (!authToken) {
+    queuePendingSend()
+    openAuthModal('登录后将自动继续发送')
+    return
+  }
   const providerId = getSelectedProvider()?.id || ''
   if (!providerId) return setStatus('请联系管理员配置全局 Provider')
   if (!currentConversation) await newConversation()
@@ -2080,6 +2326,8 @@ $('logout-btn').onclick = async () => {
 $('new-chat-btn').onclick = newConversation
 $('admin-btn').onclick = () => { location.href = '/admin.html' }
 $('code-review-btn').onclick = () => { location.href = '/code-review.html' }
+if (refs.openAuthBtn) refs.openAuthBtn.onclick = () => openAuthModal('登录后可保存会话并继续对话')
+if (refs.authClose) refs.authClose.onclick = () => closeAuthModal()
 refs.skillBtn.onclick = (event) => {
   event.stopPropagation()
   refs.skillPicker.classList.toggle('hidden')
@@ -2145,11 +2393,13 @@ $('sys-save').onclick = async () => {
   refs.sysModal.classList.remove('open')
 }
 refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.sysModal) refs.sysModal.classList.remove('open') })
+refs.authScreen.addEventListener('click', (event) => {
+  if (event.target === refs.authScreen) closeAuthModal()
+})
 
 ;(async function init() {
   if (!authToken) {
-    refs.bootScreen.classList.add('hidden')
-    refs.authScreen.classList.remove('hidden')
+    await enterGuestApp()
     return
   }
   try {
@@ -2159,8 +2409,7 @@ refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.s
   } catch {
     LS.del('authToken')
     authToken = ''
-    refs.bootScreen.classList.add('hidden')
-    refs.authScreen.classList.remove('hidden')
+    await enterGuestApp()
   }
 })()
 </script>

@@ -16,7 +16,7 @@ import providerRoutes, { adminProviderRoutes } from './routes/providers.js'
 import settingsRoutes from './routes/settings.js'
 import skillRoutes, { adminSkillRoutes } from './routes/skills.js'
 import adminRoutes from './routes/admin.js'
-import codeReviewRoutes from './routes/code-review.js'
+import codeReviewRoutes, { publicCodeReviewRoutes } from './routes/code-review.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -59,6 +59,7 @@ await app.register(adminSkillRoutes, { prefix: '/api/admin/skills' })
 await app.register(adminRoutes, { prefix: '/api/admin' })
 await app.register(settingsRoutes, { prefix: '/api/settings' })
 await app.register(codeReviewRoutes, { prefix: '/api/code-review' })
+await app.register(publicCodeReviewRoutes, { prefix: '/api/public' })
 
 // ── 启动 ────────────────────────────────────────────────
 const PORT = process.env.PORT || 3131

@@ -1035,25 +1035,35 @@ function buildResponse(review) {
   }
 }
 
+async function handleImportProblem(rawUrl, reply) {
+  const input = normalizeProblemImportInput({ url: rawUrl })
+  if (!input.url) return reply.code(400).send({ error: '题目链接不能为空' })
+  try {
+    return await importProblemByUrl(input.url)
+  } catch (err) {
+    const message = err?.message || '题目导入失败'
+    const statusCode = /格式不正确|只支持/.test(message)
+      ? 400
+      : /未找到|解析失败|内容为空/.test(message)
+        ? 422
+        : /超时|上游返回|网络不可达/.test(message)
+          ? 502
+          : 500
+    return reply.code(statusCode).send({ error: message })
+  }
+}
+
+export async function publicCodeReviewRoutes(app) {
+  app.post('/import-problem-preview', async (request, reply) => {
+    return handleImportProblem(request.body?.url, reply)
+  })
+}
+
 export default async function codeReviewRoutes(app) {
   app.addHook('preHandler', app.authenticate)
 
   app.post('/import-problem', async (request, reply) => {
-    const input = normalizeProblemImportInput(request.body)
-    if (!input.url) return reply.code(400).send({ error: '题目链接不能为空' })
-    try {
-      return await importProblemByUrl(input.url)
-    } catch (err) {
-      const message = err?.message || '题目导入失败'
-      const statusCode = /格式不正确|只支持/.test(message)
-        ? 400
-        : /未找到|解析失败|内容为空/.test(message)
-          ? 422
-          : /超时|上游返回|网络不可达/.test(message)
-            ? 502
-            : 500
-      return reply.code(statusCode).send({ error: message })
-    }
+    return handleImportProblem(request.body?.url, reply)
   })
 
   app.post('/static', async (request, reply) => {
