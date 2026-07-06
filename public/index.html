@@ -849,15 +849,25 @@ function setStatus(text, danger = true) {
   refs.status.style.color = danger ? 'var(--danger)' : 'var(--ok)'
 }
 
-function extractLuoguProblemUrl(text) {
-  const match = String(text || '').match(/https?:\/\/(?:www\.)?luogu\.com\.cn\/problem\/[A-Za-z0-9_-]+/i)
-  return match ? match[0] : ''
+function extractSupportedProblemUrl(text) {
+  const source = String(text || '')
+  const patterns = [
+    /https?:\/\/(?:www\.)?luogu\.com\.cn\/problem\/[A-Za-z0-9_-]+/i,
+    /https?:\/\/(?:www\.)?codeforces\.com\/problemset\/problem\/\d+\/[A-Za-z0-9]+/i,
+    /https?:\/\/(?:www\.)?codeforces\.com\/contest\/\d+\/problem\/[A-Za-z0-9]+/i,
+    /https?:\/\/(?:www\.)?dmoj\.ca\/problem\/[A-Za-z0-9._-]+/i,
+  ]
+  for (const pattern of patterns) {
+    const match = source.match(pattern)
+    if (match?.[0]) return match[0]
+  }
+  return ''
 }
 
-function normalizeLuoguProblemUrl(rawUrl) {
+function normalizeProblemImportUrl(rawUrl) {
   const source = String(rawUrl || '').trim()
   if (!source) return ''
-  const matched = extractLuoguProblemUrl(source)
+  const matched = extractSupportedProblemUrl(source)
   return matched || source
 }
 
@@ -867,15 +877,15 @@ function renderChatEmptyState() {
       <div class="chat-empty-shell">
         <div class="chat-empty-copy">
           <div class="chat-empty-title">开始全新对话，或直接导入题目</div>
-          <div class="chat-empty-subtitle">粘贴洛谷链接后可一键解析题面并填充到输入框</div>
+          <div class="chat-empty-subtitle">粘贴洛谷/Codeforces/DMOJ 链接后可一键解析题面并填充到输入框</div>
         </div>
         <div class="chat-empty-import">
-          <div class="chat-empty-prefix">🔗 Luogu</div>
+          <div class="chat-empty-prefix">🔗 Luogu / Codeforces / DMOJ</div>
           <input
             id="empty-luogu-url"
             class="chat-empty-url"
             type="url"
-            placeholder="粘贴洛谷题目链接 (如: https://www.luogu.com.cn/problem/P1003)..."
+            placeholder="粘贴题目链接 (如: https://www.luogu.com.cn/problem/P1003 / https://codeforces.com/problemset/problem/2050/C / https://dmoj.ca/problem/aac3p1)..."
           />
           <button id="empty-luogu-import-btn" class="primary chat-empty-import-btn" type="button">导入</button>
         </div>
@@ -891,7 +901,7 @@ function renderChatEmptyState() {
 }
 
 async function importProblemToComposer(rawUrl, triggerButton = null) {
-  const url = normalizeLuoguProblemUrl(rawUrl)
+  const url = normalizeProblemImportUrl(rawUrl)
   if (!url) {
     setStatus('题目链接不能为空')
     return
@@ -901,7 +911,7 @@ async function importProblemToComposer(rawUrl, triggerButton = null) {
   const urlInput = document.getElementById('empty-luogu-url')
   if (urlInput) urlInput.value = url
   if (importBtn) importBtn.disabled = true
-  setStatus('正在导入洛谷题面...', false)
+  setStatus('正在导入题面...', false)
 
   try {
     const payload = await api('/api/code-review/import-problem', {
@@ -914,7 +924,22 @@ async function importProblemToComposer(rawUrl, triggerButton = null) {
     refs.input.style.height = 'auto'
     refs.input.style.height = Math.min(refs.input.scrollHeight, 200) + 'px'
     refs.input.focus()
-    setStatus(`导入完成：${payload.meta?.title || payload.meta?.pid || '洛谷题面'}`, false)
+    const importedLabel = payload.meta?.title || payload.meta?.pid || '洛谷题面'
+    setStatus(`导入完成：${importedLabel}，正在自动发送...`, false)
+
+    const content = buildMessageContentFromMarkdown(refs.input.value)
+    if (!hasEditableContent(content)) {
+      throw new Error('导入内容为空，无法自动发送')
+    }
+
+    try {
+      await sendMessage()
+    } catch (sendErr) {
+      setStatus(`导入成功，但自动发送失败：${sendErr?.message || '请手动点击发送重试'}`)
+      return
+    }
+
+    setStatus(`导入并发送完成：${importedLabel}`, false)
   } catch (err) {
     setStatus(err.message || '题目导入失败')
   } finally {
@@ -935,7 +960,7 @@ function bindChatEmptyStateEvents() {
   })
   urlInput.addEventListener('paste', (event) => {
     const pasted = event.clipboardData?.getData('text/plain') || ''
-    const parsed = extractLuoguProblemUrl(pasted)
+    const parsed = extractSupportedProblemUrl(pasted)
     if (!parsed) return
     event.preventDefault()
     urlInput.value = parsed

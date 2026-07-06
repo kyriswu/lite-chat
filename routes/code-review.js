@@ -10,6 +10,8 @@ const MAX_CODE_TEXT = 150000
 const DEFAULT_TIME_LIMIT_SECONDS = 2
 const DEFAULT_MEMORY_LIMIT_MB = 256
 const LUOGU_HOSTS = new Set(['www.luogu.com.cn', 'luogu.com.cn'])
+const CODEFORCES_HOSTS = new Set(['www.codeforces.com', 'codeforces.com'])
+const DMOJ_HOSTS = new Set(['dmoj.ca', 'www.dmoj.ca'])
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
@@ -36,6 +38,39 @@ function normalizeProblemImportInput(body = {}) {
   }
 }
 
+function normalizeCodeforcesIndex(rawIndex) {
+  return String(rawIndex || '').trim().toUpperCase()
+}
+
+function parseCodeforcesProblemPath(pathname) {
+  const problemsetMatch = String(pathname || '').match(/^\/problemset\/problem\/(\d+)\/([A-Za-z0-9]+)$/)
+  if (problemsetMatch) {
+    return {
+      contestId: problemsetMatch[1],
+      index: normalizeCodeforcesIndex(problemsetMatch[2]),
+      canonicalPath: `/problemset/problem/${problemsetMatch[1]}/${normalizeCodeforcesIndex(problemsetMatch[2])}`,
+    }
+  }
+  const contestMatch = String(pathname || '').match(/^\/contest\/(\d+)\/problem\/([A-Za-z0-9]+)$/)
+  if (contestMatch) {
+    return {
+      contestId: contestMatch[1],
+      index: normalizeCodeforcesIndex(contestMatch[2]),
+      canonicalPath: `/contest/${contestMatch[1]}/problem/${normalizeCodeforcesIndex(contestMatch[2])}`,
+    }
+  }
+  return null
+}
+
+function parseDmojProblemPath(pathname) {
+  const match = String(pathname || '').match(/^\/problem\/([A-Za-z0-9._-]+)\/?$/)
+  if (!match) return null
+  return {
+    slug: match[1],
+    canonicalPath: `/problem/${match[1]}`,
+  }
+}
+
 function ensureSupportedProblemUrl(rawUrl) {
   let parsed
   try {
@@ -43,17 +78,48 @@ function ensureSupportedProblemUrl(rawUrl) {
   } catch {
     throw new Error('题目链接格式不正确')
   }
-  if (!LUOGU_HOSTS.has(parsed.hostname)) {
-    throw new Error('当前只支持导入洛谷题目链接')
+
+  if (LUOGU_HOSTS.has(parsed.hostname)) {
+    const match = parsed.pathname.match(/^\/problem\/([A-Za-z0-9_-]+)$/)
+    if (!match) {
+      throw new Error('当前只支持洛谷题目详情页链接')
+    }
+    return {
+      platform: 'luogu',
+      url: `${parsed.protocol}//${parsed.host}/problem/${match[1]}`,
+      pid: match[1],
+    }
   }
-  const match = parsed.pathname.match(/^\/problem\/([A-Za-z0-9_-]+)$/)
-  if (!match) {
-    throw new Error('当前只支持洛谷题目详情页链接')
+
+  if (CODEFORCES_HOSTS.has(parsed.hostname)) {
+    const parsedPath = parseCodeforcesProblemPath(parsed.pathname)
+    if (!parsedPath) {
+      throw new Error('当前只支持 Codeforces 题目详情页链接')
+    }
+    const pid = `CF${parsedPath.contestId}${parsedPath.index}`
+    return {
+      platform: 'codeforces',
+      url: `https://codeforces.com${parsedPath.canonicalPath}`,
+      contestId: parsedPath.contestId,
+      index: parsedPath.index,
+      pid,
+      luoguProxyUrl: `https://www.luogu.com.cn/problem/${pid}`,
+    }
   }
-  return {
-    url: `${parsed.protocol}//${parsed.host}/problem/${match[1]}`,
-    pid: match[1],
+
+  if (DMOJ_HOSTS.has(parsed.hostname)) {
+    const parsedPath = parseDmojProblemPath(parsed.pathname)
+    if (!parsedPath) {
+      throw new Error('当前只支持 DMOJ 题目详情页链接')
+    }
+    return {
+      platform: 'dmoj',
+      url: `https://dmoj.ca${parsedPath.canonicalPath}`,
+      slug: parsedPath.slug,
+    }
   }
+
+  throw new Error('当前只支持导入洛谷、Codeforces 或 DMOJ 题目链接')
 }
 
 async function fetchTextWithTimeout(url, timeoutMs = 15000) {
@@ -110,6 +176,118 @@ function extractLuoguContext(html) {
     return JSON.parse(match[1])
   } catch {
     throw new Error('题面数据解析失败')
+  }
+}
+
+function findMatchingDivEnd(html, openTagStart) {
+  const source = String(html || '')
+  const openTagEnd = source.indexOf('>', openTagStart)
+  if (openTagEnd < 0) return -1
+  const tokenPattern = /<\/?div\b[^>]*>/gi
+  tokenPattern.lastIndex = openTagEnd + 1
+  let depth = 1
+  while (true) {
+    const token = tokenPattern.exec(source)
+    if (!token) return -1
+    if (/^<\/div/i.test(token[0])) depth -= 1
+    else depth += 1
+    if (depth === 0) return token.index + token[0].length
+  }
+}
+
+function extractDivByClassesWithinParent(html, parentId, classNames) {
+  const source = String(html || '')
+  const parentOpen = new RegExp(`<div\\b[^>]*id=["']${parentId}["'][^>]*>`, 'i').exec(source)
+  if (!parentOpen) return ''
+  const parentStart = parentOpen.index
+  const parentEnd = findMatchingDivEnd(source, parentStart)
+  if (parentEnd < 0) return ''
+  const parentHtml = source.slice(parentStart, parentEnd)
+  const classes = Array.isArray(classNames) ? classNames : [classNames]
+
+  const divPattern = /<div\b[^>]*class=["']([^"']+)["'][^>]*>/gi
+  while (true) {
+    const match = divPattern.exec(parentHtml)
+    if (!match) break
+    const classList = String(match[1] || '').split(/\s+/).filter(Boolean)
+    const hit = classes.every((name) => classList.includes(name))
+    if (!hit) continue
+
+    const absoluteOpenStart = parentStart + match.index
+    const absoluteEnd = findMatchingDivEnd(source, absoluteOpenStart)
+    if (absoluteEnd < 0) return ''
+    const openTagEnd = source.indexOf('>', absoluteOpenStart)
+    if (openTagEnd < 0 || openTagEnd >= absoluteEnd) return ''
+    return source.slice(openTagEnd + 1, absoluteEnd - 6)
+  }
+
+  return ''
+}
+
+function decodeHtmlEntities(html) {
+  const named = {
+    nbsp: ' ',
+    amp: '&',
+    lt: '<',
+    gt: '>',
+    quot: '"',
+    apos: "'",
+  }
+  return String(html || '').replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (full, entity) => {
+    const key = String(entity || '')
+    if (key.startsWith('#x') || key.startsWith('#X')) {
+      const codePoint = Number.parseInt(key.slice(2), 16)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : full
+    }
+    if (key.startsWith('#')) {
+      const codePoint = Number.parseInt(key.slice(1), 10)
+      return Number.isFinite(codePoint) ? String.fromCodePoint(codePoint) : full
+    }
+    return Object.hasOwn(named, key) ? named[key] : full
+  })
+}
+
+function htmlToPlainText(html) {
+  const source = String(html || '')
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?\s*>/gi, '\n')
+    .replace(/<\/(p|div|li|h[1-6]|pre|section|article|blockquote|tr)>/gi, '\n')
+    .replace(/<li\b[^>]*>/gi, '- ')
+    .replace(/<pre\b[^>]*>/gi, '\n```\n')
+    .replace(/<\/pre>/gi, '\n```\n')
+    .replace(/<code\b[^>]*>/gi, '`')
+    .replace(/<\/code>/gi, '`')
+    .replace(/<[^>]+>/g, '')
+
+  const decoded = decodeHtmlEntities(source)
+  return decoded
+    .replace(/\r\n/g, '\n')
+    .replace(/\t/g, '  ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \u3000]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function buildDmojProblemText({ slug, titleHtml, statementHtml }) {
+  const title = htmlToPlainText(titleHtml)
+  const statement = htmlToPlainText(statementHtml)
+  if (!title && !statement) throw new Error('DMOJ 题面内容为空')
+
+  const sections = []
+  if (title) sections.push(title)
+  if (statement) sections.push(`题目描述\n${statement}`)
+  const problemText = sections.join('\n\n').trim()
+  if (!problemText) throw new Error('DMOJ 题面内容为空')
+
+  return {
+    problemText,
+    meta: {
+      pid: slug,
+      title: title || slug,
+      sourcePlatform: 'dmoj',
+    },
   }
 }
 
@@ -174,8 +352,11 @@ function buildLuoguProblemText(problem) {
   }
 }
 
-async function importLuoguProblem(rawUrl, options = {}) {
-  const source = ensureSupportedProblemUrl(rawUrl)
+async function importLuoguProblem(sourceUrl, options = {}) {
+  const source = ensureSupportedProblemUrl(sourceUrl)
+  if (source.platform !== 'luogu') {
+    throw new Error('当前仅支持洛谷题目解析')
+  }
   const html = await fetchTextWithTimeout(source.url, 15000)
   const context = extractLuoguContext(html)
   const problem = context?.data?.problem
@@ -185,6 +366,66 @@ async function importLuoguProblem(rawUrl, options = {}) {
     source,
     ...extracted,
   }
+}
+
+async function importCodeforcesProblem(sourceUrl, options = {}) {
+  const source = ensureSupportedProblemUrl(sourceUrl)
+  if (source.platform !== 'codeforces') {
+    throw new Error('当前仅支持 Codeforces 题目解析')
+  }
+  // Codeforces 在部分网络环境会触发 Cloudflare 校验，这里复用 Luogu 的 CF 题镜像页进行解析。
+  const extracted = await importLuoguProblem(source.luoguProxyUrl)
+  return {
+    source,
+    problemText: extracted.problemText,
+    meta: {
+      ...(extracted.meta || {}),
+      pid: source.pid,
+      sourcePlatform: 'codeforces',
+      sourceUrl: source.url,
+      mirrorUrl: source.luoguProxyUrl,
+    },
+  }
+}
+
+async function importDmojProblem(sourceUrl, options = {}) {
+  const source = ensureSupportedProblemUrl(sourceUrl)
+  if (source.platform !== 'dmoj') {
+    throw new Error('当前仅支持 DMOJ 题目解析')
+  }
+
+  const html = await fetchTextWithTimeout(source.url, 15000)
+  if (/just a moment/i.test(html) || /cf_chl_opt/i.test(html)) {
+    throw new Error('DMOJ 站点当前触发防护校验，暂时无法抓取题面')
+  }
+
+  const titleHtml = extractDivByClassesWithinParent(html, 'content', ['problem-title'])
+  const statementHtml = extractDivByClassesWithinParent(html, 'content-left', ['content-description', 'screen'])
+  if (!titleHtml && !statementHtml) {
+    throw new Error('未找到 DMOJ 题面节点')
+  }
+
+  const extracted = buildDmojProblemText({
+    slug: source.slug,
+    titleHtml,
+    statementHtml,
+  })
+  return {
+    source,
+    ...extracted,
+    meta: {
+      ...(extracted.meta || {}),
+      sourceUrl: source.url,
+    },
+  }
+}
+
+async function importProblemByUrl(rawUrl) {
+  const source = ensureSupportedProblemUrl(rawUrl)
+  if (source.platform === 'luogu') return importLuoguProblem(source.url)
+  if (source.platform === 'codeforces') return importCodeforcesProblem(source.url)
+  if (source.platform === 'dmoj') return importDmojProblem(source.url)
+  throw new Error('暂不支持该题目链接')
 }
 
 function parseTimeLimit(problemText) {
@@ -737,7 +978,7 @@ export default async function codeReviewRoutes(app) {
     const input = normalizeProblemImportInput(request.body)
     if (!input.url) return reply.code(400).send({ error: '题目链接不能为空' })
     try {
-      return await importLuoguProblem(input.url)
+      return await importProblemByUrl(input.url)
     } catch (err) {
       const message = err?.message || '题目导入失败'
       const statusCode = /格式不正确|只支持/.test(message)
