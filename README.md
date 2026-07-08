@@ -29,6 +29,20 @@
 - public/：前端静态页面与资源
 - docker-compose.yml：本地 PostgreSQL 容器配置
 
+## Graphify 接入
+
+如果你想让 AI 助手少读源码、少吃上下文，可以把这个仓库先映射成知识图谱，再优先查图而不是直接扫文件。
+
+推荐做法：
+
+1. 安装 Graphify，并对当前仓库执行一次建图。
+2. 之后遇到代码问题时，先用 `graphify query`、`graphify path` 或 `graphify explain` 定位相关模块。
+3. 只在图谱给出范围后，再去读具体文件。
+
+这个仓库最适合优先建图的部分是 `server.js`、`routes/`、`db/`、`middleware/` 和 `public/`。像 `node_modules/`、`uploads/`、生成的图谱输出、第三方静态库都应该排除掉，避免图里混入噪声。
+
+建议的忽略规则已经放在 `.graphifyignore`，可以直接作为 Graphify 的输入过滤起点。
+
 ## 环境要求
 
 - Node.js 18+（推荐 20 LTS）

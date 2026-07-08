@@ -1,0 +1,11 @@
+{
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": "^(?!.*(graphify-out/|node_modules/|uploads/)).*\\.(js|mjs|cjs|ts|tsx|jsx|json|sql|sh)$",
+        "isAsync": true,
+        "cmd": "cd ${workspaceFolder} && graphify update . --no-cluster"
+      }
+    ]
+  }
+}
