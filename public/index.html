@@ -2351,13 +2351,9 @@ function imageMarkdownToContentPart(altText, rawUrl) {
     return dataUrlToContentPart(cached.dataUrl, altText || cached.alt)
   }
   if (url.startsWith('data:image/')) return dataUrlToContentPart(url, altText)
-  return {
-    type: 'image_url',
-    alt_text: String(altText || '').trim(),
-    image_url: {
-      url,
-    },
-  }
+  // Remote Markdown images are prose, not attachments. Fetching them server-side
+  // makes a text paste depend on third-party hosts and can fail the chat request.
+  return null
 }
 
 function buildMessageContentFromMarkdown(source) {
