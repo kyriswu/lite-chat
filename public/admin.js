@@ -430,7 +430,9 @@ function clearAdminUserCreateForm() {
 
 function renderAdminSettings() {
   const chat = adminSettings?.chat || {}
-  $('admin-context-message-limit').value = chat.contextMessageLimit || 20
+  $('admin-context-message-limit').value = chat.contextMessageLimit || 8
+  $('admin-context-token-budget').value = chat.contextInputTokenBudget || 4000
+  $('admin-history-message-token-limit').value = chat.historyMessageTokenLimit || 800
 }
 
 async function loadAdminSettings() {
@@ -447,6 +449,7 @@ function clearAdminProviderForm() {
   $('admin-provider-api-format').value = 'openai_chat_completions'
   $('admin-provider-default-model').value = ''
   $('admin-provider-default-model-select').innerHTML = '<option value="">-- 请先点击刷新加载模型 --</option>'
+  $('admin-provider-default').checked = false
   $('admin-model-load-status').classList.add('hidden')
 }
 
@@ -502,7 +505,7 @@ function renderAdminProviders() {
     row.className = 'data-row'
     row.innerHTML = `
       <div>
-        <div class="row-title">${escHtml(provider.name)}</div>
+        <div class="row-title">${escHtml(provider.name)}${provider.isDefault ? ' <span style="color:var(--accent2);font-size:11px;">默认</span>' : ''}</div>
         <div class="row-meta">${escHtml(provider.baseUrl)} · ${escHtml(provider.apiFormat || 'openai_chat_completions')}${provider.defaultModel ? ' · ' + escHtml(provider.defaultModel) : ''}${provider.hasApiKey ? ' · 已配置 Key' : ''}</div>
       </div>
       <div class="row-actions">
@@ -516,6 +519,7 @@ function renderAdminProviders() {
       $('admin-provider-api-key').value = ''
       $('admin-provider-api-format').value = provider.apiFormat || 'openai_chat_completions'
       $('admin-provider-default-model').value = provider.defaultModel || ''
+      $('admin-provider-default').checked = Boolean(provider.isDefault)
       setTimeout(loadAdminProviderModels, 100)
     }
     row.querySelector('.delete-provider').onclick = async () => {
@@ -840,21 +844,34 @@ $('admin-provider-default-model').oninput = function() {
 }
 refs.providerForm.onsubmit = async (event) => {
   event.preventDefault()
+  const submitButton = $('admin-provider-submit')
+  if (submitButton.disabled) return
   const id = $('admin-provider-id').value
   const body = {
     name: $('admin-provider-name').value.trim(),
     baseUrl: $('admin-provider-base-url').value.trim(),
     apiFormat: $('admin-provider-api-format').value,
     defaultModel: $('admin-provider-default-model').value.trim(),
+    isDefault: $('admin-provider-default').checked,
   }
   const apiKey = $('admin-provider-api-key').value.trim()
   if (apiKey || !id) body.apiKey = apiKey
-  await api(id ? `/api/admin/providers/${id}` : '/api/admin/providers', {
-    method: id ? 'PATCH' : 'POST',
-    body: JSON.stringify(body),
-  })
-  clearAdminProviderForm()
-  await loadAdminProviders()
+  submitButton.disabled = true
+  submitButton.textContent = '保存中…'
+  try {
+    await api(id ? `/api/admin/providers/${id}` : '/api/admin/providers', {
+      method: id ? 'PATCH' : 'POST',
+      body: JSON.stringify(body),
+    })
+    clearAdminProviderForm()
+    await loadAdminProviders()
+    setStatus('供应商已保存')
+  } catch (err) {
+    setStatus(`保存供应商失败：${err.message}`, true)
+  } finally {
+    submitButton.disabled = false
+    submitButton.textContent = '保存'
+  }
 }
 
 $('admin-skill-reset').onclick = clearAdminSkillForm
@@ -882,10 +899,12 @@ refs.skillForm.onsubmit = async (event) => {
 
 refs.settingsForm.onsubmit = async (event) => {
   event.preventDefault()
-  const contextMessageLimit = Number.parseInt($('admin-context-message-limit').value, 10) || 20
+  const contextMessageLimit = Number.parseInt($('admin-context-message-limit').value, 10) || 8
+  const contextInputTokenBudget = Number.parseInt($('admin-context-token-budget').value, 10) || 4000
+  const historyMessageTokenLimit = Number.parseInt($('admin-history-message-token-limit').value, 10) || 800
   const data = await api('/api/admin/settings/chat', {
     method: 'PUT',
-    body: JSON.stringify({ contextMessageLimit }),
+    body: JSON.stringify({ contextMessageLimit, contextInputTokenBudget, historyMessageTokenLimit }),
   })
   adminSettings = { ...(adminSettings || {}), chat: data.setting.value }
   renderAdminSettings()

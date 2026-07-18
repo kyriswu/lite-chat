@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   display_name TEXT,
   is_admin BOOLEAN NOT NULL DEFAULT false,
+  global_system_prompt TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_login_at TIMESTAMPTZ
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS providers (
 CREATE INDEX IF NOT EXISTS providers_user_id_idx ON providers(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS providers_one_default_per_user_idx ON providers(user_id) WHERE is_default = true;
 CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true;
+CREATE UNIQUE INDEX IF NOT EXISTS providers_one_global_default_idx ON providers(is_default) WHERE is_default = true AND is_global = true;
 
 CREATE TABLE IF NOT EXISTS conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -91,11 +93,13 @@ CREATE TABLE IF NOT EXISTS app_settings (
 
 -- Backward-compatible migrations for existing installs.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS global_system_prompt TEXT;
 ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL;
 ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE providers ADD COLUMN IF NOT EXISTS api_format TEXT NOT NULL DEFAULT 'openai_chat_completions';
 UPDATE providers SET is_global = true WHERE user_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true;
+CREATE UNIQUE INDEX IF NOT EXISTS providers_one_global_default_idx ON providers(is_default) WHERE is_default = true AND is_global = true;
 
 -- Skills (管理员创建的技能/提示词模板)
 CREATE TABLE IF NOT EXISTS skills (

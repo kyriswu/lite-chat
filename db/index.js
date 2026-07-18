@@ -33,11 +33,13 @@ export async function withTransaction(fn) {
 
 export async function runMigrations() {
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false')
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS global_system_prompt TEXT')
   await query('ALTER TABLE providers ALTER COLUMN user_id DROP NOT NULL')
   await query('ALTER TABLE providers ADD COLUMN IF NOT EXISTS is_global BOOLEAN NOT NULL DEFAULT false')
   await query("ALTER TABLE providers ADD COLUMN IF NOT EXISTS api_format TEXT NOT NULL DEFAULT 'openai_chat_completions'")
   await query('UPDATE providers SET is_global = true WHERE user_id IS NULL')
   await query('CREATE UNIQUE INDEX IF NOT EXISTS providers_global_name_idx ON providers(name) WHERE is_global = true')
+  await query('CREATE UNIQUE INDEX IF NOT EXISTS providers_one_global_default_idx ON providers(is_default) WHERE is_default = true AND is_global = true')
   await query(`
     CREATE TABLE IF NOT EXISTS skills (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

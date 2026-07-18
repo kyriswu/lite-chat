@@ -4,7 +4,9 @@ import { requireAdmin } from '../middleware/auth.js'
 import { cacheDelPattern, cacheGetJson, cacheSetJson } from '../db/cache.js'
 
 const DEFAULT_CHAT_SETTINGS = {
-  contextMessageLimit: 20,
+  contextMessageLimit: 8,
+  contextInputTokenBudget: 4000,
+  historyMessageTokenLimit: 800,
 }
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -12,6 +14,18 @@ function clampContextMessageLimit(value) {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isFinite(parsed)) return DEFAULT_CHAT_SETTINGS.contextMessageLimit
   return Math.min(Math.max(parsed, 1), 200)
+}
+
+function clampContextInputTokenBudget(value) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return DEFAULT_CHAT_SETTINGS.contextInputTokenBudget
+  return Math.min(Math.max(parsed, 512), 128000)
+}
+
+function clampHistoryMessageTokenLimit(value) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return DEFAULT_CHAT_SETTINGS.historyMessageTokenLimit
+  return Math.min(Math.max(parsed, 64), 8000)
 }
 
 function publicAdminUser(row) {
@@ -43,6 +57,8 @@ export default async function adminRoutes(app) {
           ...DEFAULT_CHAT_SETTINGS,
           ...(settings.chat || {}),
           contextMessageLimit: clampContextMessageLimit(settings.chat?.contextMessageLimit),
+          contextInputTokenBudget: clampContextInputTokenBudget(settings.chat?.contextInputTokenBudget),
+          historyMessageTokenLimit: clampHistoryMessageTokenLimit(settings.chat?.historyMessageTokenLimit),
         },
       },
     }
@@ -53,6 +69,8 @@ export default async function adminRoutes(app) {
   app.put('/settings/chat', async (request) => {
     const value = {
       contextMessageLimit: clampContextMessageLimit(request.body?.contextMessageLimit),
+      contextInputTokenBudget: clampContextInputTokenBudget(request.body?.contextInputTokenBudget),
+      historyMessageTokenLimit: clampHistoryMessageTokenLimit(request.body?.historyMessageTokenLimit),
     }
     const result = await query(
       `INSERT INTO app_settings (key, value)

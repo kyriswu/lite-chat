@@ -644,7 +644,6 @@
   #input-bar { border-top: 1px solid var(--line-soft); padding: 14px 16px 18px; background: rgba(246,250,255,.74); backdrop-filter: blur(10px); }
   #input-wrap { max-width: min(96vw, var(--chat-compose-max)); margin: 0 auto; background: rgba(255,255,255,.97); border: 1px solid #d4ddef; border-radius: 16px; display: flex; flex-direction: column; transition: opacity var(--motion-fast) var(--motion-ease), border-color var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease); box-shadow: var(--shadow-card); }
   #input-wrap.disabled { opacity: .62; border-color: var(--surface3); }
-  #input-wrap:focus-within { border-color: rgba(47,111,236,.52); box-shadow: 0 18px 44px rgba(24,68,158,.12), 0 0 0 3px rgba(47,111,236,.10); }
   #msg-input { background: transparent; border: 0; color: var(--text); resize: none; padding: 14px 16px 6px; min-height: 56px; max-height: 200px; outline: none; }
   #msg-input:disabled { cursor: progress; }
   #input-actions { display: flex; align-items: center; gap: 6px; padding: 6px 10px 10px; }
@@ -659,6 +658,9 @@
   .modal-box.wide { width: min(760px, 100%); max-height: min(90vh, 900px); display: flex; flex-direction: column; gap: 12px; }
   .modal-title { font-size: 16px; font-weight: 800; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .modal-status { min-height: 18px; font-size: 12px; }
+  .modal-status.success { color: var(--ok); }
+  .modal-status.error { color: var(--danger); }
   /* Skill 选择器 */
   .skill-btn { background: none; border: none; cursor: pointer; padding: 0 6px; color: var(--text2); line-height: 1; transition: color .15s; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; }
   .skill-btn:hover, .skill-btn.active { color: var(--accent); }
@@ -794,7 +796,7 @@
       </button>
       <button class="topbar-action" id="sys-prompt-btn">
         <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"></path></svg>
-        <span>系统提示</span>
+        <span>全局提示</span>
       </button>
     </div>
     <div id="messages"><div id="empty-state">开始对话</div></div>
@@ -816,8 +818,9 @@
 
 <div class="modal" id="sys-modal">
   <div class="modal-box">
-    <div class="modal-title">系统提示词</div>
+    <div class="modal-title">全局系统提示词</div>
     <textarea id="sys-prompt-input" rows="6" placeholder="你是一个有用的助手"></textarea>
+    <div class="modal-status" id="sys-prompt-status" role="status" aria-live="polite"></div>
     <div class="modal-actions">
       <button class="secondary" id="sys-cancel">取消</button>
       <button class="primary" id="sys-save">保存</button>
@@ -1096,6 +1099,7 @@ let conversations = []
 let currentConversation = null
 let messages = []
 let isConversationLoading = false
+let isMessageSubmissionInProgress = false
 let loadingConversationId = null
 let switchConversationSeq = 0
 let editingMessageId = null
@@ -1107,6 +1111,7 @@ const streamControllers = new Map()
 let authMode = 'login'
 let appMode = 'guest'
 let pendingAction = null
+let sysPromptStatusTimer = null
 let skills = []
 let activeSkillId = null
 let skillSelectionTouched = false
@@ -1121,7 +1126,7 @@ const refs = {
   list: $('conversation-list'), title: $('chat-title'), messages: $('messages'), input: $('msg-input'),
   send: $('send-btn'),
   status: $('status'), userLine: $('user-line'), sidebar: $('sidebar'), sysModal: $('sys-modal'),
-  sysInput: $('sys-prompt-input'),
+  sysInput: $('sys-prompt-input'), sysStatus: $('sys-prompt-status'), sysSave: $('sys-save'),
   adminBtn: $('admin-btn'), skillBtn: $('skill-btn'), skillPicker: $('skill-picker'),
 }
 
@@ -1232,6 +1237,12 @@ async function enterGuestApp() {
 function setStatus(text, danger = true) {
   refs.status.textContent = text || ''
   refs.status.style.color = danger ? 'var(--danger)' : 'var(--ok)'
+}
+
+function setSysPromptStatus(text = '', type = '') {
+  clearTimeout(sysPromptStatusTimer)
+  refs.sysStatus.textContent = text
+  refs.sysStatus.className = `modal-status${type ? ` ${type}` : ''}`
 }
 
 function extractSupportedProblemUrl(text) {
@@ -1634,7 +1645,6 @@ async function newConversation() {
   currentConversation = {
     id: null,
     title: '新对话',
-    systemPrompt: '',
     isDraft: true,
   }
   messages = []
@@ -1653,12 +1663,10 @@ function isDraftConversation(conversation = currentConversation) {
 
 async function ensureConversationPersisted() {
   if (!isDraftConversation()) return currentConversation
-  const draftSystemPrompt = String(currentConversation?.systemPrompt || '').trim()
   const data = await api('/api/conversations', {
     method: 'POST',
     body: JSON.stringify({
       title: '新对话',
-      systemPrompt: draftSystemPrompt || null,
     }),
   })
   const persisted = {
@@ -1914,7 +1922,7 @@ function applyMessageScroll(mode, conversationId, previousTop = refs.messages.sc
 
 async function sendMessage(options = {}) {
   const { forceNewConversation = false } = options || {}
-  if (isConversationLoading || streamingConversationIds.has(currentConversation?.id)) return
+  if (isMessageSubmissionInProgress || isConversationLoading || streamingConversationIds.has(currentConversation?.id)) return
   const text = refs.input.value.trim()
   const content = buildMessageContentFromMarkdown(refs.input.value)
   if (!hasEditableContent(content)) return
@@ -1925,78 +1933,83 @@ async function sendMessage(options = {}) {
   }
   const providerId = getSelectedProvider()?.id || ''
   if (!providerId) return setStatus('请联系管理员配置全局 Provider')
-  if (forceNewConversation) {
-    saveCurrentConversationScroll()
-    currentConversation = null
-    LS.del('activeConversationId')
-  }
-  if (!currentConversation) await newConversation()
-  if (isDraftConversation()) {
-    try {
-      await ensureConversationPersisted()
-    } catch (err) {
-      return setStatus(err.message || '新对话创建失败，请重试')
-    }
-  }
-
-  const sourceConversation = currentConversation
-  const sourceConversationId = sourceConversation?.id
-  if (!sourceConversationId) return setStatus('当前对话不可用，请重试')
-
-  const userMsg = { role: 'user', content }
-  const assistantMsg = { role: 'assistant', content: '', conversationId: sourceConversationId }
-  const streamMessages = [...messages, userMsg, assistantMsg]
-  messages = streamMessages
-  updateConversationDataCache(sourceConversation, streamMessages)
-  appendMessage(userMsg)
-  refs.input.value = ''
-  refs.input.style.height = ''
-
-  const bubble = appendMessage(assistantMsg)
-  bubble.innerHTML = renderPendingAssistantBubble()
-
-  streamingConversationIds.add(sourceConversationId)
-  const controller = new AbortController()
-  streamControllers.set(sourceConversationId, controller)
-  setComposerDisabled(false, sourceConversationId)
-  setStatus('')
+  isMessageSubmissionInProgress = true
   try {
-    const { raw, stopped } = await streamAssistantResponse('/api/chat', {
-      conversationId: sourceConversationId,
-      providerId,
-      message: { role: 'user', content },
-      skillId: activeSkillId,
-      stream: true,
-    }, bubble, controller.signal, (partial) => {
-      assistantMsg.content = partial
-      updateConversationDataCache(sourceConversation, streamMessages)
-    })
-    assistantMsg.content = raw
-    updateConversationDataCache(sourceConversation, streamMessages)
-    if (currentConversation?.id === sourceConversationId) {
-      bubble.innerHTML = raw ? renderMarkdown(raw) : '<span style="color:var(--text2);font-style:italic">已停止</span>'
-      applySyntaxHighlighting(bubble)
+    if (forceNewConversation) {
+      saveCurrentConversationScroll()
+      currentConversation = null
+      LS.del('activeConversationId')
     }
-    if (raw) {
-      if (currentConversation?.id === sourceConversationId) await refreshConversationDataById(sourceConversationId, { render: true })
-      else await refreshConversationDataById(sourceConversationId, { render: false })
-    } else if (stopped) {
-      streamMessages.pop()
-      messages = currentConversation?.id === sourceConversationId ? streamMessages : messages
-      updateConversationDataCache(sourceConversation, streamMessages)
-      if (currentConversation?.id === sourceConversationId) renderMessages(streamMessages, { scrollMode: 'bottom' })
+    if (!currentConversation) await newConversation()
+    if (isDraftConversation()) {
+      try {
+        await ensureConversationPersisted()
+      } catch (err) {
+        return setStatus(err.message || '新对话创建失败，请重试')
+      }
     }
-    loadConversations()
-  } catch (err) {
-    assistantMsg.content = err.message
+
+    const sourceConversation = currentConversation
+    const sourceConversationId = sourceConversation?.id
+    if (!sourceConversationId) return setStatus('当前对话不可用，请重试')
+
+    const userMsg = { role: 'user', content }
+    const assistantMsg = { role: 'assistant', content: '', conversationId: sourceConversationId }
+    const streamMessages = [...messages, userMsg, assistantMsg]
+    messages = streamMessages
     updateConversationDataCache(sourceConversation, streamMessages)
-    if (currentConversation?.id === sourceConversationId) {
-      bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+    appendMessage(userMsg)
+    refs.input.value = ''
+    refs.input.style.height = ''
+
+    const bubble = appendMessage(assistantMsg)
+    bubble.innerHTML = renderPendingAssistantBubble()
+
+    streamingConversationIds.add(sourceConversationId)
+    const controller = new AbortController()
+    streamControllers.set(sourceConversationId, controller)
+    setComposerDisabled(false, sourceConversationId)
+    setStatus('')
+    try {
+      const { raw, stopped } = await streamAssistantResponse('/api/chat', {
+        conversationId: sourceConversationId,
+        providerId,
+        message: { role: 'user', content },
+        skillId: activeSkillId,
+        stream: true,
+      }, bubble, controller.signal, (partial) => {
+        assistantMsg.content = partial
+        updateConversationDataCache(sourceConversation, streamMessages)
+      })
+      assistantMsg.content = raw
+      updateConversationDataCache(sourceConversation, streamMessages)
+      if (currentConversation?.id === sourceConversationId) {
+        bubble.innerHTML = raw ? renderMarkdown(raw) : '<span style="color:var(--text2);font-style:italic">已停止</span>'
+        applySyntaxHighlighting(bubble)
+      }
+      if (raw) {
+        if (currentConversation?.id === sourceConversationId) await refreshConversationDataById(sourceConversationId, { render: true })
+        else await refreshConversationDataById(sourceConversationId, { render: false })
+      } else if (stopped) {
+        streamMessages.pop()
+        messages = currentConversation?.id === sourceConversationId ? streamMessages : messages
+        updateConversationDataCache(sourceConversation, streamMessages)
+        if (currentConversation?.id === sourceConversationId) renderMessages(streamMessages, { scrollMode: 'bottom' })
+      }
+      loadConversations()
+    } catch (err) {
+      assistantMsg.content = err.message
+      updateConversationDataCache(sourceConversation, streamMessages)
+      if (currentConversation?.id === sourceConversationId) {
+        bubble.innerHTML = `<span class="danger">${escHtml(err.message)}</span>`
+      }
+    } finally {
+      streamingConversationIds.delete(sourceConversationId)
+      streamControllers.delete(sourceConversationId)
+      setComposerDisabled(isConversationLoading)
     }
   } finally {
-    streamingConversationIds.delete(sourceConversationId)
-    streamControllers.delete(sourceConversationId)
-    setComposerDisabled(isConversationLoading)
+    isMessageSubmissionInProgress = false
   }
 }
 
@@ -2538,27 +2551,28 @@ refs.input.addEventListener('paste', async (event) => {
 document.addEventListener('click', () => refs.skillPicker.classList.add('hidden'))
 window.addEventListener('resize', updateSidebarCollapsedUI)
 $('sys-prompt-btn').onclick = () => {
-  refs.sysInput.value = currentConversation?.systemPrompt || ''
+  refs.sysInput.value = currentUser?.globalSystemPrompt || ''
+  setSysPromptStatus()
   refs.sysModal.classList.add('open')
 }
 $('sys-cancel').onclick = () => refs.sysModal.classList.remove('open')
 $('sys-save').onclick = async () => {
-  if (!currentConversation) await newConversation()
-  if (isDraftConversation()) {
-    try {
-      await ensureConversationPersisted()
-    } catch (err) {
-      return setStatus(err.message || '新对话创建失败，请重试')
-    }
+  const globalSystemPrompt = refs.sysInput.value.trim()
+  refs.sysSave.disabled = true
+  setSysPromptStatus()
+  try {
+    const data = await api('/api/auth/me/global-system-prompt', {
+      method: 'PATCH',
+      body: JSON.stringify({ globalSystemPrompt }),
+    })
+    currentUser = data.user
+    setSysPromptStatus('保存成功', 'success')
+    sysPromptStatusTimer = setTimeout(() => setSysPromptStatus(), 2000)
+  } catch (err) {
+    setSysPromptStatus(err.message || '保存失败，请重试', 'error')
+  } finally {
+    refs.sysSave.disabled = false
   }
-  const systemPrompt = refs.sysInput.value.trim()
-  const data = await api(`/api/conversations/${currentConversation.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ systemPrompt }),
-  })
-  currentConversation = data.conversation
-  updateConversationDataCache()
-  refs.sysModal.classList.remove('open')
 }
 refs.sysModal.addEventListener('click', (event) => { if (event.target === refs.sysModal) refs.sysModal.classList.remove('open') })
 refs.authScreen.addEventListener('click', (event) => {

@@ -6,7 +6,6 @@ function publicConversation(row) {
     id: row.id,
     title: row.title,
     providerId: row.provider_id,
-    systemPrompt: row.system_prompt || '',
     model: row.model,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -94,10 +93,10 @@ export default async function conversationRoutes(app) {
     }
 
     const result = await query(
-      `INSERT INTO conversations (user_id, provider_id, title, system_prompt, model)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO conversations (user_id, provider_id, title, model)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [request.user.id, providerId, title, body.systemPrompt || null, body.model || null],
+      [request.user.id, providerId, title, body.model || null],
     )
     await bumpConversationCacheVersion(request.user.id)
     return reply.code(201).send({ conversation: publicConversation(result.rows[0]) })
@@ -166,10 +165,9 @@ export default async function conversationRoutes(app) {
     const result = await query(
       `UPDATE conversations
        SET title = COALESCE($3, title),
-           system_prompt = $4,
-           provider_id = $5,
-           model = $6,
-           archived_at = $7,
+           provider_id = $4,
+           model = $5,
+           archived_at = $6,
            updated_at = now()
        WHERE id = $1 AND user_id = $2
        RETURNING *`,
@@ -177,7 +175,6 @@ export default async function conversationRoutes(app) {
         request.params.id,
         request.user.id,
         body.title ? String(body.title).trim() : null,
-        Object.hasOwn(body, 'systemPrompt') ? body.systemPrompt || null : existing.system_prompt,
         Object.hasOwn(body, 'providerId') ? body.providerId || null : existing.provider_id,
         Object.hasOwn(body, 'model') ? body.model || null : existing.model,
         body.archived ? new Date() : existing.archived_at,

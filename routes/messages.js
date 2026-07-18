@@ -2,8 +2,9 @@ import { one, query, withTransaction } from '../db/index.js'
 import { cacheGetJson, cacheIncr, cacheSetJson } from '../db/cache.js'
 import { chatCompletionsUrl, decryptApiKey, responsesUrl } from './providers.js'
 
-const DEFAULT_CONTEXT_MESSAGE_LIMIT = 20
-const DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET = 12000
+const DEFAULT_CONTEXT_MESSAGE_LIMIT = 8
+const DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET = 4000
+const DEFAULT_HISTORY_MESSAGE_TOKEN_LIMIT = 800
 
 function normalizeContent(content) {
   if (Array.isArray(content) || typeof content === 'string') return content
@@ -27,6 +28,38 @@ function estimateContentTokens(content) {
     }, 0)
   }
   return estimateTokenCount(JSON.stringify(content || ''))
+}
+
+function truncateTextToTokenLimit(text, tokenLimit) {
+  const value = String(text || '')
+  const maxCharacters = Math.max(1, tokenLimit * 4)
+  if (value.length <= maxCharacters) return value
+  return `[历史消息已截断，保留末尾 ${tokenLimit} token]\n${value.slice(-maxCharacters)}`
+}
+
+function truncateSystemPromptToTokenLimit(text, tokenLimit) {
+  const value = String(text || '')
+  const maxCharacters = Math.max(1, tokenLimit * 4)
+  if (value.length < maxCharacters) return value
+
+  const suffix = `\n[系统提示词已截断，保留开头 ${tokenLimit} token]`
+  return `${value.slice(0, Math.max(0, maxCharacters - suffix.length))}${suffix}`
+}
+
+function truncateHistoricalContent(content, tokenLimit) {
+  if (typeof content === 'string') return truncateTextToTokenLimit(content, tokenLimit)
+  if (!Array.isArray(content)) return content
+
+  let remainingTextTokens = Math.max(0, tokenLimit - content.reduce((sum, part) => (
+    part?.type === 'text' ? sum : sum + estimateContentTokens([part])
+  ), 0))
+  return content.map((part) => {
+    if (part?.type !== 'text') return part
+    const tokens = estimateTokenCount(part.text || '')
+    const allowed = Math.min(tokens, remainingTextTokens)
+    remainingTextTokens -= allowed
+    return { ...part, text: allowed ? truncateTextToTokenLimit(part.text, allowed) : '[历史消息文本已截断]' }
+  })
 }
 
 function hasRenderableContent(content) {
@@ -56,25 +89,30 @@ function buildUpstreamMessages(rows, systemPrompt, fallbackUserContent = null) {
   return upstreamMessages
 }
 
-function buildUpstreamMessagesWithBudget(rows, systemPrompt, fallbackUserContent = null, tokenBudget = DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET) {
+function buildUpstreamMessagesWithBudget(rows, systemPrompt, fallbackUserContent = null, tokenBudget = DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET, historyMessageTokenLimit = DEFAULT_HISTORY_MESSAGE_TOKEN_LIMIT) {
   const budget = Math.max(512, Number.parseInt(tokenBudget, 10) || DEFAULT_CONTEXT_INPUT_TOKEN_BUDGET)
   const selected = []
   let usedTokens = 0
 
   if (systemPrompt) {
     const systemTokens = estimateContentTokens(systemPrompt)
-    if (systemTokens < budget) {
-      selected.push({ role: 'system', content: systemPrompt })
-      usedTokens += systemTokens
-    }
+    const systemContent = truncateSystemPromptToTokenLimit(systemPrompt, budget)
+    selected.push({ role: 'system', content: systemContent })
+    usedTokens += Math.min(systemTokens, budget)
   }
 
   const chatRows = []
-  for (const row of rows) {
+  for (const [index, row] of rows.entries()) {
     if (!['system', 'user', 'assistant'].includes(row.role)) continue
     if (!hasRenderableContent(row.content)) continue
-    chatRows.push({ role: row.role, content: row.content })
+    const isCurrentMessage = index === rows.length - 1 && row.role === 'user'
+    chatRows.push({
+      role: row.role,
+      content: isCurrentMessage ? row.content : truncateHistoricalContent(row.content, historyMessageTokenLimit),
+    })
   }
+
+  while (chatRows.length > 1 && chatRows[0].role === 'assistant') chatRows.shift()
 
   const pickedFromTail = []
   for (let index = chatRows.length - 1; index >= 0; index -= 1) {
@@ -88,6 +126,7 @@ function buildUpstreamMessagesWithBudget(rows, systemPrompt, fallbackUserContent
     usedTokens += tokenCost
   }
   pickedFromTail.reverse()
+  while (pickedFromTail.length > 1 && pickedFromTail[0].role === 'assistant') pickedFromTail.shift()
   selected.push(...pickedFromTail)
 
   const hasChatMessage = selected.some((message) => ['user', 'assistant'].includes(message.role))
@@ -97,17 +136,17 @@ function buildUpstreamMessagesWithBudget(rows, systemPrompt, fallbackUserContent
   return selected
 }
 
-function mergeSystemPrompts(skillPrompt, conversationPrompt) {
+function mergeSystemPrompts(skillPrompt, userPrompt) {
   const skillText = String(skillPrompt || '').trim()
-  const conversationText = String(conversationPrompt || '').trim()
-  if (!skillText) return conversationText
-  if (!conversationText) return skillText
+  const userText = String(userPrompt || '').trim()
+  if (!skillText) return userText
+  if (!userText) return skillText
   return [
     'Skill instructions:',
     skillText,
     '',
-    'Conversation-specific instructions:',
-    conversationText,
+    'User global instructions:',
+    userText,
   ].join('\n')
 }
 
@@ -312,6 +351,21 @@ async function getChatContextInputTokenBudget() {
   return budget
 }
 
+function clampHistoryMessageTokenLimit(value) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isFinite(parsed)) return DEFAULT_HISTORY_MESSAGE_TOKEN_LIMIT
+  return Math.min(Math.max(parsed, 64), 8000)
+}
+
+async function getChatHistoryMessageTokenLimit() {
+  const cached = await cacheGetJson('app_settings:chat_history_message_token_limit')
+  if (cached?.limit) return clampHistoryMessageTokenLimit(cached.limit)
+  const row = await one("SELECT value FROM app_settings WHERE key = 'chat'")
+  const limit = clampHistoryMessageTokenLimit(row?.value?.historyMessageTokenLimit)
+  await cacheSetJson('app_settings:chat_history_message_token_limit', { limit }, 300)
+  return limit
+}
+
 async function getRecentConversationMessages(conversationId, userId, limit) {
   const result = await query(
     `SELECT role, content
@@ -391,7 +445,8 @@ async function resolveChatContext({ body, conversation, userId, reply }) {
     return null
   }
 
-  let systemPrompt = String(conversation.system_prompt || '').trim()
+  const user = await one('SELECT global_system_prompt FROM users WHERE id = $1', [userId])
+  let systemPrompt = String(user?.global_system_prompt || '').trim()
   if (body.skillId) {
     const skill = await one('SELECT system_prompt FROM skills WHERE id = $1 AND is_active = true', [body.skillId])
     if (skill?.system_prompt) systemPrompt = mergeSystemPrompts(skill.system_prompt, systemPrompt)
@@ -704,12 +759,13 @@ export default async function messageRoutes(app) {
     })
     await clearConversationCaches(request.user.id, conversation.id)
 
-    const [contextMessageLimit, contextInputTokenBudget] = await Promise.all([
+    const [contextMessageLimit, contextInputTokenBudget, historyMessageTokenLimit] = await Promise.all([
       getChatContextMessageLimit(),
       getChatContextInputTokenBudget(),
+      getChatHistoryMessageTokenLimit(),
     ])
     const rows = await getRecentConversationMessages(conversation.id, request.user.id, contextMessageLimit)
-    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget)
+    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget, historyMessageTokenLimit)
 
     const streamResult = await streamProviderChat({ request, reply, context, upstreamMessages })
     if (!streamResult.handled) return reply.code(streamResult.errorStatus).send(streamResult.errorPayload)
@@ -766,12 +822,13 @@ export default async function messageRoutes(app) {
     )
     await clearConversationCaches(request.user.id, conversation.id)
 
-    const [contextMessageLimit, contextInputTokenBudget] = await Promise.all([
+    const [contextMessageLimit, contextInputTokenBudget, historyMessageTokenLimit] = await Promise.all([
       getChatContextMessageLimit(),
       getChatContextInputTokenBudget(),
+      getChatHistoryMessageTokenLimit(),
     ])
     const rows = await getRecentConversationMessages(conversation.id, request.user.id, contextMessageLimit)
-    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget)
+    const upstreamMessages = buildUpstreamMessagesWithBudget(rows, context.systemPrompt, userContent, contextInputTokenBudget, historyMessageTokenLimit)
 
     const streamResult = await streamProviderChat({ request, reply, context, upstreamMessages })
     if (!streamResult.handled) return reply.code(streamResult.errorStatus).send(streamResult.errorPayload)

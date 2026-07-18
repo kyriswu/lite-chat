@@ -99,9 +99,10 @@
               <input class="input" id="admin-provider-default-model" placeholder="或手动输入模型名称" />
               <div id="admin-model-load-status" class="field-status hidden"></div>
             </div>
+            <label class="check-row"><input type="checkbox" id="admin-provider-default" /> 设为默认供应商</label>
             <div class="actions">
               <button class="secondary" id="admin-provider-reset" type="button">清空</button>
-              <button class="primary" type="submit">保存</button>
+              <button class="primary" id="admin-provider-submit" type="submit">保存</button>
             </div>
           </form>
         </section>
@@ -151,7 +152,7 @@
           <div class="data-row">
             <div>
               <div class="row-title">携带上下文消息数</div>
-              <div class="row-meta">普通发送和编辑气泡重新生成都会使用这个数量。System Prompt 不计入。</div>
+              <div class="row-meta">全局生效。普通发送和编辑气泡重新生成都会使用这些限制；System Prompt 不计入消息条数。</div>
             </div>
           </div>
         </section>
@@ -160,7 +161,15 @@
           <form class="form" id="admin-settings-form">
             <div class="field">
               <label>上下文消息数（1-200）</label>
-              <input class="input short-input" id="admin-context-message-limit" type="number" min="1" max="200" value="20" />
+              <input class="input short-input" id="admin-context-message-limit" type="number" min="1" max="200" value="8" />
+            </div>
+            <div class="field">
+              <label>上下文 Token 预算（512-128000）</label>
+              <input class="input short-input" id="admin-context-token-budget" type="number" min="512" max="128000" value="4000" />
+            </div>
+            <div class="field">
+              <label>单条历史消息 Token 上限（64-8000）</label>
+              <input class="input short-input" id="admin-history-message-token-limit" type="number" min="64" max="8000" value="800" />
             </div>
             <div class="actions">
               <button class="primary" type="submit">保存设置</button>

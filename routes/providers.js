@@ -148,21 +148,21 @@ export async function adminProviderRoutes(app) {
     const input = normalizeProviderInput(body)
     if (!input.name || !input.baseUrl) return reply.code(400).send({ error: 'Name and base URL are required' })
 
-    const result = await query(
-      `INSERT INTO providers (user_id, name, base_url, api_key_ciphertext, provider_type, api_format, default_model, is_default, is_global)
-       VALUES (NULL, $1, $2, $3, $4, $5, $6, false, true)
-       RETURNING *`,
-      [
-        input.name,
-        input.baseUrl,
-        encryptApiKey(String(body.apiKey || '').trim()),
-        input.providerType,
-        input.apiFormat,
-        input.defaultModel,
-      ],
-    )
+    const provider = await withTransaction(async (client) => {
+      await client.query('LOCK TABLE providers IN SHARE ROW EXCLUSIVE MODE')
+      const existing = await client.query('SELECT 1 FROM providers WHERE user_id IS NULL OR is_global = true LIMIT 1')
+      const isDefault = input.isDefault || !existing.rowCount
+      if (isDefault) await client.query('UPDATE providers SET is_default = false WHERE user_id IS NULL OR is_global = true')
+      const result = await client.query(
+        `INSERT INTO providers (user_id, name, base_url, api_key_ciphertext, provider_type, api_format, default_model, is_default, is_global)
+         VALUES (NULL, $1, $2, $3, $4, $5, $6, $7, true)
+         RETURNING *`,
+        [input.name, input.baseUrl, encryptApiKey(String(body.apiKey || '').trim()), input.providerType, input.apiFormat, input.defaultModel, isDefault],
+      )
+      return result.rows[0]
+    })
     await cacheDelPattern('providers:*')
-    return reply.code(201).send({ provider: publicProvider(result.rows[0]) })
+    return reply.code(201).send({ provider: publicProvider(provider) })
   })
 
   app.patch('/:id', async (request, reply) => {
@@ -179,8 +179,18 @@ export async function adminProviderRoutes(app) {
       ? encryptApiKey(String(body.apiKey || '').trim())
       : existing.api_key_ciphertext
 
-    const result = await query(
-      `UPDATE providers
+    const provider = await withTransaction(async (client) => {
+      let isDefault = input.isDefault
+      if (!isDefault && existing.is_default) {
+        const otherDefault = await client.query(
+          'SELECT 1 FROM providers WHERE id <> $1 AND is_default = true AND (user_id IS NULL OR is_global = true) LIMIT 1',
+          [request.params.id],
+        )
+        isDefault = !otherDefault.rowCount
+      }
+      if (isDefault) await client.query('UPDATE providers SET is_default = false WHERE id <> $1 AND (user_id IS NULL OR is_global = true)', [request.params.id])
+      const result = await client.query(
+        `UPDATE providers
        SET user_id = NULL,
            name = $2,
            base_url = $3,
@@ -188,15 +198,17 @@ export async function adminProviderRoutes(app) {
            provider_type = $5,
            api_format = $6,
            default_model = $7,
-           is_default = false,
+           is_default = $8,
            is_global = true,
            updated_at = now()
        WHERE id = $1 AND (user_id IS NULL OR is_global = true)
        RETURNING *`,
-      [request.params.id, input.name, input.baseUrl, apiKeyCiphertext, input.providerType, input.apiFormat, input.defaultModel],
-    )
+        [request.params.id, input.name, input.baseUrl, apiKeyCiphertext, input.providerType, input.apiFormat, input.defaultModel, isDefault],
+      )
+      return result.rows[0]
+    })
     await cacheDelPattern('providers:*')
-    return { provider: publicProvider(result.rows[0]) }
+    return { provider: publicProvider(provider) }
   })
 
   app.get('/:id/models', async (request, reply) => {

@@ -10,6 +10,7 @@ function publicUser(row) {
     email: row.email,
     displayName: row.display_name,
     isAdmin: Boolean(row.is_admin),
+    globalSystemPrompt: row.global_system_prompt || '',
   }
 }
 
@@ -36,7 +37,7 @@ export default async function authRoutes(app) {
       const result = await one(
         `INSERT INTO users (email, password_hash, display_name, is_admin)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, email, display_name, is_admin`,
+         RETURNING id, email, display_name, is_admin, global_system_prompt`,
         [email, passwordHash, displayName, isAdmin],
       )
       return { token: await createToken(app, result), user: publicUser(result) }
@@ -51,7 +52,7 @@ export default async function authRoutes(app) {
     const email = String(request.body?.email || '').trim().toLowerCase()
     const password = String(request.body?.password || '')
     const user = await one(
-      'SELECT id, email, password_hash, display_name, is_admin FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, display_name, is_admin, global_system_prompt FROM users WHERE email = $1',
       [email],
     )
     if (!user || !(await bcrypt.compare(password, user.password_hash))) {
@@ -69,7 +70,19 @@ export default async function authRoutes(app) {
   })
 
   app.get('/me', { preHandler: app.authenticate }, async (request) => {
-    const user = await one('SELECT id, email, display_name, is_admin FROM users WHERE id = $1', [request.user.id])
+    const user = await one('SELECT id, email, display_name, is_admin, global_system_prompt FROM users WHERE id = $1', [request.user.id])
+    return { user: publicUser(user) }
+  })
+
+  app.patch('/me/global-system-prompt', { preHandler: app.authenticate }, async (request) => {
+    const value = String(request.body?.globalSystemPrompt || '').trim() || null
+    const user = await one(
+      `UPDATE users
+       SET global_system_prompt = $2, updated_at = now()
+       WHERE id = $1
+       RETURNING id, email, display_name, is_admin, global_system_prompt`,
+      [request.user.id, value],
+    )
     return { user: publicUser(user) }
   })
 
